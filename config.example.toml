@@ -1,6 +1,6 @@
 # Copy to the OS config path and edit:
 #   Linux / WSL:  ~/.config/light-stripe/config.toml
-#   macOS:        ~/Library/Application Support/light-stripe/config.toml
+#   macOS:        ~/Library/Application Support/dev.light-stripe.light-stripe/config.toml
 #   Windows:      %APPDATA%\light-stripe\config.toml
 #
 # Check the resolved path with:
@@ -10,7 +10,7 @@
 refresh_secs = 15
 
 # Ports hidden on the TUI Ports tab
-ignored_ports = [53, 323]
+ignored_ports = [53, 323, 5353, 0]
 
 # Extra "dev process" markers (added to the built-in list)
 # extra_dev_markers = ["webpack-dev-server", "my-legacy-app"]

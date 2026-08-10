@@ -182,89 +182,67 @@ Reading and changing things stay separate on purpose. Collectors don’t kill an
 
 ### Config
 
-Optional file — if missing, built-in defaults are used:
+Settings live in a TOML file under the OS config directory ([`directories`](https://docs.rs/directories) — `ProjectDirs::from("dev", "light-stripe", "light-stripe")`). If the file is missing, built-in defaults apply.
+
+**Find the path on your machine:**
 
 ```bash
-# see resolved path + effective values
-cargo run -- config
-
-# Linux / WSL example path
-mkdir -p ~/.config/light-stripe
-cp config.example.toml ~/.config/light-stripe/config.toml
-```
-
-You can also pass an explicit file:
-
-```bash
-cargo run -- --config ./config.example.toml config
-cargo run -- --config ./config.example.toml tui
-```
-
-Settings today: `refresh_secs`, `ignored_ports`, `extra_dev_markers`, `docker_host`.
-
-#### Docker connection (`docker_host`)
-
-Light Stripe talks to the **local** Docker daemon on the machine where it runs (your laptop, WSL VM, or VPS). In most cases you do **not** need to set anything — Light Stripe auto-detects common socket paths.
-
-If auto-detect fails, set `docker_host` in config. It accepts:
-
-- a Unix socket URI: `unix:///var/run/docker.sock`
-- a plain socket path: `/var/run/docker.sock`
-- a TCP endpoint: `tcp://127.0.0.1:2375` (only if your daemon listens on the network)
-
-**Priority:** config `docker_host` → env `DOCKER_HOST` → auto-detect known sockets.
-
-**1. Find your config path**
-
-```bash
+light-stripe config
+# or from a clone:
 cargo run -- config
 ```
 
-**2. Copy the example and edit**
+The command prints the resolved path and effective values. When no file exists you will see `file not found, using defaults`.
 
-```bash
-# Linux / WSL
-mkdir -p ~/.config/light-stripe
-cp config.example.toml ~/.config/light-stripe/config.toml
+**Typical config paths:**
 
-# macOS
-mkdir -p ~/Library/Application\ Support/light-stripe
-cp config.example.toml ~/Library/Application\ Support/light-stripe/config.toml
-```
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/dev.light-stripe.light-stripe/config.toml` |
+| Linux / WSL | `~/.config/light-stripe/config.toml` |
+| Windows | `%APPDATA%\light-stripe\light-stripe\config.toml` |
 
-**3. Add `docker_host` only when needed**
+On Linux or Windows, run `light-stripe config` if your layout differs.
 
-Linux / WSL / VPS (typical — often no override needed):
+**Set up a custom config:**
 
-```toml
-# Usually auto-detect works; uncomment only if it doesn't:
-# docker_host = "unix:///var/run/docker.sock"
-```
+1. Copy the example from the repo to the path shown by `light-stripe config`:
 
-macOS with Docker Desktop (when `/var/run/docker.sock` is missing):
+   ```bash
+   CONFIG_DIR="$(light-stripe config 2>&1 | sed -n 's/^config path: //p' | xargs dirname)"
+   mkdir -p "$CONFIG_DIR"
+   cp config.example.toml "$CONFIG_DIR/config.toml"
+   ```
+
+   macOS one-liner (same path as above):
+
+   ```bash
+   mkdir -p ~/Library/Application\ Support/dev.light-stripe.light-stripe
+   cp config.example.toml ~/Library/Application\ Support/dev.light-stripe.light-stripe/config.toml
+   ```
+
+2. Edit `docker_host`, `ignored_ports`, `extra_dev_markers`, `refresh_secs`, etc.
+
+3. **Local override** without installing a user config:
+
+   ```bash
+   light-stripe --config ./config.toml tui
+   cargo run -- --config ./config.toml config
+   ```
+
+**Docker (`docker_host`)**
+
+Light Stripe uses the **local** Docker daemon on the machine where it runs. Usually you can leave `docker_host` unset — it auto-detects common socket paths.
+
+Priority: config `docker_host` → env `DOCKER_HOST` → auto-detect.
+
+If auto-detect fails, set in config:
 
 ```toml
 docker_host = "unix:///Users/you/.docker/run/docker.sock"
 ```
 
-Same path without the `unix://` prefix also works:
-
-```toml
-docker_host = "/Users/you/.docker/run/docker.sock"
-```
-
-**Alternative: environment variable**
-
-Instead of config, you can export `DOCKER_HOST` in your shell (used when `docker_host` is not set in config):
-
-```bash
-export DOCKER_HOST=unix:///Users/you/.docker/run/docker.sock
-cargo run -- tui
-```
-
-**When you don't need this**
-
-If Light Stripe runs on the same machine as Docker (the usual VPS / dev setup), leave `docker_host` unset. Light Stripe is meant to monitor **this** host's ports, processes, and containers — not a remote Docker cluster from your machine.
+(`/Users/you/.docker/run/docker.sock` without the `unix://` prefix also works.) Or export `DOCKER_HOST` when `docker_host` is unset in config.
 
 ### Libraries
 

@@ -257,7 +257,7 @@ impl App {
             return;
         };
 
-        match crate::actions::docker::stop_container(&container.id) {
+        match crate::actions::docker::stop_container(&container.id, self.config.docker_host()) {
             Ok(()) => {
                 self.set_status(format!("stopped {}", container.name));
                 self.needs_refresh = true;
@@ -272,7 +272,7 @@ impl App {
             return;
         };
 
-        match crate::actions::docker::restart_container(&container.id) {
+        match crate::actions::docker::restart_container(&container.id, self.config.docker_host()) {
             Ok(()) => {
                 self.set_status(format!("restarted {}", container.name));
                 self.needs_refresh = true;
@@ -302,7 +302,7 @@ impl App {
 
         self.input_mode = InputMode::Normal;
 
-        match crate::actions::docker::remove_container(&id) {
+        match crate::actions::docker::remove_container(&id, self.config.docker_host()) {
             Ok(()) => {
                 self.set_status(format!("removed {name}"));
                 self.needs_refresh = true;
