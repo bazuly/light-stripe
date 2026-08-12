@@ -90,6 +90,10 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
             app.jump_from_selected_port();
         }
 
+        KeyCode::Char(' ') => app.toggle_mark_current(),
+        KeyCode::Char('a') => app.mark_all(),
+        KeyCode::Char('A') => app.unmark_all(),
+
         _ => {}
     }
 }

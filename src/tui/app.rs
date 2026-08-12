@@ -4,6 +4,7 @@ use crate::collectors::{enrich, ports, processes, system};
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, PortBinding, SystemStats};
 use anyhow::Result;
+use std::collections::HashSet;
 
 pub struct Snapshot {
     pub ports: Vec<PortBinding>,
@@ -28,7 +29,10 @@ pub struct App {
     pub search_query: String,
     pub search_match_index: usize,
     pub status_message: Option<String>,
+    pub marked_container_ids: HashSet<String>,
+    pub marked_pids: HashSet<u32>,
 }
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
     Ports,
@@ -40,7 +44,7 @@ pub enum Tab {
 pub enum InputMode {
     Normal,
     Search,
-    ConfirmDockerRemove { id: String, name: String },
+    ConfirmDockerRemove { targets: Vec<(String, String)> }, // id, name
 }
 
 impl App {
@@ -59,6 +63,8 @@ impl App {
             search_query: String::new(),
             search_match_index: 0,
             status_message: None,
+            marked_container_ids: HashSet::new(),
+            marked_pids: HashSet::new(),
         }
     }
 
@@ -96,6 +102,7 @@ impl App {
 
         self.last_error = None;
 
+        self.prune_marks_after_refresh();
         self.clamp_selection_after_refresh();
 
         Ok(())
@@ -123,6 +130,74 @@ impl App {
         let next = (self.selected_row as isize + delta).clamp(0, max as isize) as usize;
         self.selected_row = next;
         self.table_state.select(Some(next));
+    }
+
+    pub fn toggle_mark_current(&mut self) {
+        match self.tab {
+            Tab::Docker => {
+                let Some(c) = self.selected_container() else {
+                    return;
+                };
+                let id = c.id.clone();
+                if !self.marked_container_ids.remove(&id) {
+                    self.marked_container_ids.insert(id);
+                }
+            }
+
+            Tab::Processes => {
+                let Some(c) = self.selected_process() else {
+                    return;
+                };
+                let pid = c.pid.clone();
+                if !self.marked_pids.remove(&pid) {
+                    self.marked_pids.insert(pid);
+                }
+            }
+
+            Tab::Ports => {}
+        }
+    }
+
+    pub fn mark_all(&mut self) {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        match self.tab {
+            Tab::Docker => {
+                self.marked_container_ids =
+                    snapshot.containers.iter().map(|c| c.id.clone()).collect();
+            }
+            Tab::Processes => {
+                self.marked_pids = snapshot.processes.iter().map(|c| c.pid.clone()).collect();
+            }
+
+            Tab::Ports => {}
+        }
+    }
+
+    pub fn unmark_all(&mut self) {
+        match self.tab {
+            Tab::Docker => self.marked_container_ids.clear(),
+            Tab::Processes => self.marked_pids.clear(),
+            Tab::Ports => {}
+        }
+    }
+
+    /// After refresh, remove id's which are not in snapshot
+    pub fn prune_marks_after_refresh(&mut self) {
+        let Some(snapshot) = &self.snapshot else {
+            self.marked_container_ids.clear();
+            self.marked_pids.clear();
+            return;
+        };
+
+        let alive_containers: HashSet<&str> =
+            snapshot.containers.iter().map(|c| c.id.as_str()).collect();
+        self.marked_container_ids
+            .retain(|id| alive_containers.contains(id.as_str()));
+
+        let alive_pids: HashSet<u32> = snapshot.processes.iter().map(|p| p.pid).collect();
+        self.marked_pids.retain(|pid| alive_pids.contains(pid));
     }
 
     pub fn clamp_selection_after_refresh(&mut self) {
@@ -223,24 +298,6 @@ impl App {
         snapshot.processes.get(self.selected_row)
     }
 
-    pub fn kill_selected_process(&mut self) {
-        let Some(process) = self.selected_process().cloned() else {
-            self.set_status("no process selected");
-            return;
-        };
-
-        match crate::actions::process::kill_process(process.pid) {
-            Ok(()) => {
-                self.set_status(format!(
-                    "process killed {} (pid: {})",
-                    process.name, process.pid,
-                ));
-                self.needs_refresh = true;
-            }
-            Err(err) => self.set_status(format!("killed process error {err}")),
-        }
-    }
-
     pub fn selected_container(&self) -> Option<&DockerContainer> {
         if self.tab != Tab::Docker {
             return None;
@@ -250,64 +307,113 @@ impl App {
     }
 
     pub fn stop_selected_container(&mut self) {
-        // if confirm remove is active - refresh
         self.cancel_pending_action();
-        let Some(container) = self.selected_container().cloned() else {
-            self.set_status("No container to select");
+        let targets = self.docker_action_targets();
+        if targets.is_empty() {
+            self.set_status("no container selected");
             return;
-        };
-
-        match crate::actions::docker::stop_container(&container.id, self.config.docker_host()) {
-            Ok(()) => {
-                self.set_status(format!("stopped {}", container.name));
-                self.needs_refresh = true;
+        }
+        let total = targets.len();
+        let mut selected: usize = 0; // selected rows
+        let mut last_err: Option<String> = None;
+        for (id, _name) in &targets {
+            match crate::actions::docker::stop_container(id, self.config.docker_host()) {
+                Ok(()) => selected += 1,
+                Err(e) => last_err = Some(e.to_string()),
             }
-            Err(error) => self.set_status(format!("stop failed container: {error}")),
+        }
+        self.marked_container_ids.clear();
+        self.needs_refresh = true;
+        if let Some(err) = last_err {
+            self.set_status(format!("stopped {selected}/{total}: {err}"));
+        } else {
+            self.set_status(format!("stopped {selected}/{total}"));
         }
     }
 
     pub fn restart_selected_container(&mut self) {
-        let Some(container) = self.selected_container().cloned() else {
-            self.set_status("No container to select");
+        self.cancel_pending_action();
+        let targets = self.docker_action_targets();
+        if targets.is_empty() {
+            self.set_status("no container selected");
             return;
-        };
-
-        match crate::actions::docker::restart_container(&container.id, self.config.docker_host()) {
-            Ok(()) => {
-                self.set_status(format!("restarted {}", container.name));
-                self.needs_refresh = true;
+        }
+        let total = targets.len();
+        let mut selected: usize = 0; // selected rows
+        let mut last_err: Option<String> = None;
+        for (id, _name) in &targets {
+            match crate::actions::docker::restart_container(id, self.config.docker_host()) {
+                Ok(()) => selected += 1,
+                Err(e) => last_err = Some(e.to_string()),
             }
-            Err(error) => self.set_status(format!(
-                "restart
-             failed container: {error}"
-            )),
+        }
+        self.marked_container_ids.clear();
+        self.needs_refresh = true;
+        if let Some(err) = last_err {
+            self.set_status(format!("restarted {selected}/{total}: {err}"));
+        } else {
+            self.set_status(format!("restarted {selected}/{total}"));
+        }
+    }
+
+    pub fn kill_selected_process(&mut self) {
+        self.cancel_pending_action();
+        let targets = self.process_action_targets();
+        if targets.is_empty() {
+            self.set_status("no process selected");
+            return;
+        }
+        let total = targets.len();
+        let mut selected: usize = 0; // selected rows
+        let mut last_err: Option<String> = None;
+        for (pid, _name) in &targets {
+            match crate::actions::process::kill_process(*pid) {
+                Ok(()) => selected += 1,
+                Err(e) => last_err = Some(e.to_string()),
+            }
+        }
+        self.marked_pids.clear();
+        self.needs_refresh = true;
+        if let Some(err) = last_err {
+            self.set_status(format!("killed pid {selected}/{total}: {err}"));
+        } else {
+            self.set_status(format!("killed {selected}/{total}"))
         }
     }
 
     pub fn request_remove_selected_container(&mut self) {
-        let Some(container) = self.selected_container().cloned() else {
-            self.set_status("no container selected");
+        let targets = self.docker_action_targets();
+        if targets.is_empty() {
+            self.set_status("no containers selected");
             return;
-        };
-        self.input_mode = InputMode::ConfirmDockerRemove {
-            id: container.id,
-            name: container.name,
         }
+        self.input_mode = InputMode::ConfirmDockerRemove { targets }
     }
 
     pub fn confirm_docker_remove(&mut self) {
-        let InputMode::ConfirmDockerRemove { id, name } = self.input_mode.clone() else {
+        let InputMode::ConfirmDockerRemove { targets } = self.input_mode.clone() else {
             return;
         };
 
         self.input_mode = InputMode::Normal;
+        let total = targets.len();
+        let mut selected: usize = 0;
+        let mut last_err: Option<String> = None;
 
-        match crate::actions::docker::remove_container(&id, self.config.docker_host()) {
-            Ok(()) => {
-                self.set_status(format!("removed {name}"));
-                self.needs_refresh = true;
+        for (id, _name) in &targets {
+            match crate::actions::docker::remove_container(id, self.config.docker_host()) {
+                Ok(()) => {
+                    selected += 1;
+                }
+                Err(e) => last_err = Some(e.to_string()),
             }
-            Err(error) => self.set_status(format!("remove failed: {error}")),
+        }
+        self.marked_container_ids.clear();
+        self.needs_refresh = true;
+        if let Some(err) = last_err {
+            self.set_status(format!("removed {selected}/{total}: {err}"));
+        } else {
+            self.set_status(format!("removed {selected}/{total}"));
         }
     }
 
@@ -382,6 +488,44 @@ impl App {
         self.selected_row = index;
         self.list_offset = 0;
         self.table_state.select(Some(index));
+    }
+
+    fn docker_action_targets(&self) -> Vec<(String, String)> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+
+        if !self.marked_container_ids.is_empty() {
+            return snapshot
+                .containers
+                .iter()
+                .filter(|c| self.marked_container_ids.contains(&c.id))
+                .map(|c| (c.id.clone(), c.name.clone()))
+                .collect();
+        }
+
+        self.selected_container()
+            .map(|c| vec![(c.id.clone(), c.name.clone())])
+            .unwrap_or_default()
+    }
+
+    fn process_action_targets(&self) -> Vec<(u32, String)> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+
+        if !self.marked_pids.is_empty() {
+            return snapshot
+                .processes
+                .iter()
+                .filter(|process| self.marked_pids.contains(&process.pid))
+                .map(|process| (process.pid.clone(), process.name.clone()))
+                .collect();
+        }
+
+        self.selected_process()
+            .map(|p| vec![(p.pid.clone(), p.name.clone())])
+            .unwrap_or_default()
     }
 }
 
@@ -665,5 +809,20 @@ mod tests {
         app.search_query = "node".to_string();
         app.search_match_index = 0;
         assert_eq!(app.select_search_status().as_deref(), Some("/node  [1/2]"));
+    }
+
+    #[test]
+    fn prune_drops_missing_ids() {
+        let mut app = App::new(Config::default());
+        app.marked_container_ids.insert("gone".into());
+        app.snapshot = Some(Snapshot {
+            ports: vec![],
+            processes: vec![],
+            containers: vec![],
+            docker_error: None,
+            stats: empty_stats(),
+        });
+        app.prune_marks_after_refresh();
+        assert!(app.marked_container_ids.is_empty())
     }
 }

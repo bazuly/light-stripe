@@ -144,6 +144,10 @@ Three tabs:
 | `s` | Stop container (Docker tab) |
 | `S` | Restart container (Docker tab) |
 | `d` | Remove container — then `y` to confirm, `n` / `Esc` to cancel |
+| `Space` | Toggle mark on current row (Docker / Processes) |
+| `a` | Mark all on current tab |
+| `A` | Unmark all on current tab |
+| `s` / `S` / `d` / `x` | Act on **marked** rows if any; otherwise the current row |
 
 Search is intentionally simple: type a query, hit Enter, and the selection jumps to the first hit. It does not hide the rest of the list.
 

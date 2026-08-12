@@ -195,8 +195,13 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .containers
         .iter()
         .map(|container| {
+            let mark = if app.marked_container_ids.contains(&container.id) {
+                "●"
+            } else {
+                "○"
+            };
             Row::new(vec![
-                container.name.clone(),
+                format!("{mark} {}", container.name),
                 container.image.clone(),
                 format_host_ports(&container.host_ports),
                 format_optional_cpu(container.cpu_percent),
@@ -252,11 +257,16 @@ fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .processes
         .iter()
         .map(|process| {
+            let mark = if app.marked_pids.contains(&process.pid) {
+                "●"
+            } else {
+                "○"
+            };
             Row::new(vec![
                 process.pid.to_string(),
                 format_cpu(process.cpu_usage),
                 format_memory_mb(process.memory_bytes),
-                process.name.clone(),
+                format!("{mark} {}", process.name),
                 truncate_text(&process.cmdline, MAX_CMDLINE_LEN),
             ])
         })
@@ -287,30 +297,48 @@ fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
-    let text = if let InputMode::ConfirmDockerRemove { name, .. } = &app.input_mode {
-        format!("Remove {name} [y/N]")
+    let text = if let InputMode::ConfirmDockerRemove { targets } = &app.input_mode {
+        let names: Vec<&str> = targets.iter().map(|(_, name)| name.as_str()).collect();
+        if names.len() == 1 {
+            format!("Remove {} [y/N]", names[0])
+        } else {
+            format!("Remove {} containers [y/N]", names.len())
+        }
     } else if app.input_mode == InputMode::Search {
         format!("search: {}_", app.search_query)
     } else if let Some(status) = &app.status_message {
-        format!("{status} | {}", footer_hints(app.tab))
-        // format!("{status} | q: quit | r: refresh | /: search | x: kill (processes)")
+        format!("{status} | {}", footer_hints(app))
     } else if let Some(search) = app.select_search_status() {
-        format!("{search} | {}", footer_hints(app.tab))
-        // format!("q: quit | r: refresh | /: search | x: kill | 1-3: tabs | {search}")
+        format!("{search} | {}", footer_hints(app))
     } else {
-        footer_hints(app.tab).to_string()
+        footer_hints(app).to_string()
     };
 
     let widget = Paragraph::new(text);
     frame.render_widget(widget, area);
 }
 
-fn footer_hints(tab: Tab) -> &'static str {
-    match tab {
-        Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-3: tabs",
-        Tab::Processes => "q: quit | r: refresh | /: search | x: kill | 1-3: tabs",
+fn footer_hints(app: &App) -> String {
+    match app.tab {
+        Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-3: tabs".to_string(),
+        Tab::Processes => {
+            let prefix = if app.marked_pids.is_empty() {
+                String::new()
+            } else {
+                format!("{} selected processes | ", app.marked_pids.len())
+            };
+            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-3: tabs")
+        }
+
         Tab::Docker => {
-            "q: quit | r: refresh | /: search | s: stop | S: restart | d: remove | 1-3: tabs"
+            let prefix = if app.marked_container_ids.is_empty() {
+                String::new()
+            } else {
+                format!("{} selected containers | ", app.marked_container_ids.len())
+            };
+            format!(
+                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | 1-3: tabs"
+            )
         }
     }
 }
