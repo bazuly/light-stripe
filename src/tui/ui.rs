@@ -48,7 +48,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &mut App) {
     } else {
         "Light Stripe | Loading...".to_string()
     };
-    let widget = Paragraph::new(text).block(Block::bordered().title(" DevTop "));
+    let widget = Paragraph::new(text).block(Block::bordered().title(" LightStripe "));
     frame.render_widget(widget, area);
 }
 
@@ -166,6 +166,9 @@ fn draw_ports_table(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
+    let visible = viewport_rows(area);
+    app.ensure_visible(visible);
+
     let Some(snapshot) = &app.snapshot else {
         let widget =
             Paragraph::new("Loading containers...").block(Block::bordered().title("Docker"));
