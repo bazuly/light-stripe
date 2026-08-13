@@ -117,9 +117,9 @@ Full-screen view. Data refreshes about every two seconds (press `r` to refresh n
 
 Three tabs:
 
-1. **Ports** — look up who owns a port (read-only)
-2. **Processes** — your local servers / tooling; press `x` to kill the selected process
-3. **Docker** — containers with CPU / MEM; stop, restart, or remove
+1. **Ports** — who owns a port; `Enter` / `g` jumps to the process or container
+2. **Processes** — local servers / tooling; mark rows, then `x` to kill (with confirm)
+3. **Docker** — containers with CPU / MEM; mark rows, then stop / restart / remove
 
 <p align="center">
   <img src="assets/light-stripe-tui-docker.png" alt="Light Stripe TUI — Docker tab showing containers with CPU and memory usage" width="820" />
@@ -133,21 +133,25 @@ Three tabs:
 
 | Key | What it does |
 |-----|----------------|
-| `q` / `Esc` | Quit |
+| `q` / `Esc` | Quit (in a confirm prompt, `Esc` cancels instead) |
 | `r` | Refresh |
 | `1` `2` `3` | Jump to a tab |
 | `Tab` | Cycle tabs |
 | `↑` `↓` or `k` `j` | Move around |
+| `PgUp` / `PgDn` | Move by a page |
+| `Home` / `End` | First / last row |
 | `/` | Search and jump to a match |
 | `n` / `N` | Next / previous match |
-| `x` | Kill process (Processes tab) |
-| `s` | Stop container (Docker tab) |
-| `S` | Restart container (Docker tab) |
-| `d` | Remove container — then `y` to confirm, `n` / `Esc` to cancel |
-| `Space` | Toggle mark on current row (Docker / Processes) |
-| `a` | Mark all on current tab |
-| `A` | Unmark all on current tab |
-| `s` / `S` / `d` / `x` | Act on **marked** rows if any; otherwise the current row |
+| `Enter` / `g` | Jump from port → process or container (Ports tab) |
+| `Space` | Toggle mark on the current row (Docker / Processes; shown as `●` / `○`) |
+| `a` | Mark all rows on the current tab |
+| `A` | Unmark all |
+| `x` | Kill process(es) — confirm with `y`, cancel with `n` / `Esc` (Processes) |
+| `s` | Stop container(s) (Docker) |
+| `S` | Restart container(s) (Docker) |
+| `d` | Remove container(s) — confirm with `y`, cancel with `n` / `Esc` (Docker) |
+
+**Marks:** if any rows are marked, `s` / `S` / `d` / `x` apply to **all marked** rows; otherwise they apply to the highlighted row only. Marks are tracked by container id / pid, so a refresh does not scramble your selection.
 
 Search is intentionally simple: type a query, hit Enter, and the selection jumps to the first hit. It does not hide the rest of the list.
 
