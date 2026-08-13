@@ -303,9 +303,16 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     let text = if let InputMode::ConfirmDockerRemove { targets } = &app.input_mode {
         let names: Vec<&str> = targets.iter().map(|(_, name)| name.as_str()).collect();
         if names.len() == 1 {
-            format!("Remove {} [y/N]", names[0])
+            format!("Remove {}? [y/N]", names[0])
         } else {
-            format!("Remove {} containers [y/N]", names.len())
+            format!("Remove {} containers? [y/N]", names.len())
+        }
+    } else if let InputMode::ConfirmProcessRemove { targets } = &app.input_mode {
+        if targets.len() == 1 {
+            let (pid, name) = &targets[0];
+            format!("Kill {name} (pid {pid})? [y/N]")
+        } else {
+            format!("Kill {} processes? [y/N]", targets.len())
         }
     } else if app.input_mode == InputMode::Search {
         format!("search: {}_", app.search_query)

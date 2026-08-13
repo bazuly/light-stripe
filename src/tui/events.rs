@@ -2,23 +2,30 @@ use crate::tui::app::{App, InputMode, Tab};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
-    if matches!(app.input_mode, InputMode::ConfirmDockerRemove { .. }) {
-        handle_confirm_key(app, key);
-        return;
-    }
+    match &app.input_mode {
+        InputMode::ConfirmDockerRemove { .. } | InputMode::ConfirmProcessRemove { .. } => {
+            handle_confirm_key(app, key);
+            return;
+        }
+        InputMode::Search => {
+            handle_search_key(app, key);
+        }
 
-    if app.input_mode == InputMode::Search {
-        handle_search_key(app, key);
-        return;
+        InputMode::Normal => {}
     }
-
     handle_normal_key(app, key);
 }
 
 fn handle_confirm_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Char('y') | KeyCode::Char('Y') => app.confirm_docker_remove(),
-        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => app.cancel_pending_action(),
+        KeyCode::Char('y') | KeyCode::Char('Y') => match &app.input_mode {
+            InputMode::ConfirmDockerRemove { .. } => app.confirm_docker_remove(),
+            InputMode::ConfirmProcessRemove { .. } => app.confirm_kill_selected_process(),
+            _ => {}
+        },
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            app.cancel_pending_action();
+        }
         _ => {}
     }
 }
@@ -77,7 +84,7 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         }
 
         KeyCode::Char('x') | KeyCode::Char('X') if app.tab == Tab::Processes => {
-            app.kill_selected_process();
+            app.request_kill_selected_process();
         }
 
         KeyCode::Char('s') if app.tab == Tab::Docker => app.stop_selected_container(),

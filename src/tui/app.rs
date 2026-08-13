@@ -45,6 +45,7 @@ pub enum InputMode {
     Normal,
     Search,
     ConfirmDockerRemove { targets: Vec<(String, String)> }, // id, name
+    ConfirmProcessRemove { targets: Vec<(u32, String)> },   // pid, name
 }
 
 impl App {
@@ -356,22 +357,33 @@ impl App {
         }
     }
 
-    pub fn kill_selected_process(&mut self) {
+    pub fn request_kill_selected_process(&mut self) {
         self.cancel_pending_action();
         let targets = self.process_action_targets();
         if targets.is_empty() {
             self.set_status("no process selected");
             return;
         }
+        self.input_mode = InputMode::ConfirmProcessRemove { targets };
+    }
+
+    pub fn confirm_kill_selected_process(&mut self) {
+        let InputMode::ConfirmProcessRemove { targets } = self.input_mode.clone() else {
+            return;
+        };
+        self.input_mode = InputMode::Normal;
+
         let total = targets.len();
         let mut selected: usize = 0; // selected rows
         let mut last_err: Option<String> = None;
+
         for (pid, _name) in &targets {
             match crate::actions::process::kill_process(*pid) {
                 Ok(()) => selected += 1,
                 Err(e) => last_err = Some(e.to_string()),
             }
         }
+
         self.marked_pids.clear();
         self.needs_refresh = true;
         if let Some(err) = last_err {
@@ -408,6 +420,7 @@ impl App {
                 Err(e) => last_err = Some(e.to_string()),
             }
         }
+
         self.marked_container_ids.clear();
         self.needs_refresh = true;
         if let Some(err) = last_err {
