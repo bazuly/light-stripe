@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use bollard::Docker;
 use bollard::query_parameters::{
-    RemoveContainerOptionsBuilder, RestartContainerOptionsBuilder, StopContainerOptionsBuilder,
+    RemoveContainerOptionsBuilder, RemoveVolumeOptionsBuilder, RestartContainerOptionsBuilder,
+    StopContainerOptionsBuilder,
 };
 use tokio::runtime::Runtime;
 
@@ -35,6 +36,17 @@ pub fn remove_container(id: &str, docker_host: Option<&str>) -> Result<()> {
             .remove_container(&id, Some(options))
             .await
             .context("docker container remove failed")
+    })
+}
+
+pub fn remove_volume(name: &str, docker_host: Option<&str>, force: bool) -> Result<()> {
+    let name = name.to_string();
+    with_docker(docker_host, |docker| async move {
+        let options = RemoveVolumeOptionsBuilder::default().force(force).build();
+        docker
+            .remove_volume(&name, Some(options))
+            .await
+            .with_context(|| format!("docker volume rm failed ({name})"))
     })
 }
 

@@ -3,14 +3,16 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     match &app.input_mode {
-        InputMode::ConfirmDockerRemove { .. } | InputMode::ConfirmProcessRemove { .. } => {
+        InputMode::ConfirmDockerRemove { .. }
+        | InputMode::ConfirmProcessRemove { .. }
+        | InputMode::ConfirmVolumeRemove { .. } => {
             handle_confirm_key(app, key);
             return;
         }
         InputMode::Search => {
             handle_search_key(app, key);
+            return;
         }
-
         InputMode::Normal => {}
     }
     handle_normal_key(app, key);
@@ -21,6 +23,7 @@ fn handle_confirm_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('y') | KeyCode::Char('Y') => match &app.input_mode {
             InputMode::ConfirmDockerRemove { .. } => app.confirm_docker_remove(),
             InputMode::ConfirmProcessRemove { .. } => app.confirm_kill_selected_process(),
+            InputMode::ConfirmVolumeRemove { .. } => app.confirm_volume_remove(),
             _ => {}
         },
         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
@@ -57,12 +60,14 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('1') => app.set_tab(Tab::Ports),
         KeyCode::Char('2') => app.set_tab(Tab::Processes),
         KeyCode::Char('3') => app.set_tab(Tab::Docker),
+        KeyCode::Char('4') => app.set_tab(Tab::Volumes),
 
         KeyCode::Tab => {
             let next_tab = match app.tab {
                 Tab::Ports => Tab::Processes,
                 Tab::Processes => Tab::Docker,
-                Tab::Docker => Tab::Ports,
+                Tab::Docker => Tab::Volumes,
+                Tab::Volumes => Tab::Ports,
             };
             app.set_tab(next_tab);
         }
@@ -92,9 +97,15 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('d') | KeyCode::Char('D') if app.tab == Tab::Docker => {
             app.request_remove_selected_container();
         }
+        KeyCode::Char('d') | KeyCode::Char('D') if app.tab == Tab::Volumes => {
+            app.request_remove_selected_volumes();
+        }
 
         KeyCode::Enter | KeyCode::Char('g') if app.tab == Tab::Ports => {
             app.jump_from_selected_port();
+        }
+        KeyCode::Enter | KeyCode::Char('g') if app.tab == Tab::Volumes => {
+            app.jump_from_selected_volume();
         }
 
         KeyCode::Char(' ') => app.toggle_mark_current(),

@@ -1,8 +1,8 @@
 use crate::actions::search;
 use crate::collectors::docker::collect;
-use crate::collectors::{enrich, ports, processes, system};
+use crate::collectors::{enrich, ports, processes, system, volumes};
 use crate::config::Config;
-use crate::models::{DevProcess, DockerContainer, PortBinding, SystemStats};
+use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -11,6 +11,7 @@ pub struct Snapshot {
     pub processes: Vec<DevProcess>,
     pub containers: Vec<DockerContainer>,
     pub docker_error: Option<String>,
+    pub volumes: Vec<DockerVolume>,
     pub stats: SystemStats,
 }
 
@@ -31,6 +32,7 @@ pub struct App {
     pub status_message: Option<String>,
     pub marked_container_ids: HashSet<String>,
     pub marked_pids: HashSet<u32>,
+    pub marked_volume_names: HashSet<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -38,6 +40,7 @@ pub enum Tab {
     Ports,
     Processes,
     Docker,
+    Volumes,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -46,6 +49,7 @@ pub enum InputMode {
     Search,
     ConfirmDockerRemove { targets: Vec<(String, String)> }, // id, name
     ConfirmProcessRemove { targets: Vec<(u32, String)> },   // pid, name
+    ConfirmVolumeRemove { targets: Vec<String> },
 }
 
 impl App {
@@ -66,6 +70,7 @@ impl App {
             status_message: None,
             marked_container_ids: HashSet::new(),
             marked_pids: HashSet::new(),
+            marked_volume_names: HashSet::new(),
         }
     }
 
@@ -93,10 +98,24 @@ impl App {
             Err(error) => (Vec::new(), Some(error.to_string())),
         };
 
+        let volumes = if docker_error.is_some() {
+            Vec::new()
+        } else {
+            match volumes::collect(self.config.docker_host()) {
+                Ok(volumes) => volumes,
+                Err(error) => {
+                    // Keep containers visible; surface volume failure in status.
+                    self.set_status(format!("volumes unavailable: {error}"));
+                    Vec::new()
+                }
+            }
+        };
+
         self.snapshot = Some(Snapshot {
             ports,
             processes,
             containers,
+            volumes,
             docker_error,
             stats,
         });
@@ -118,6 +137,7 @@ impl App {
             Tab::Ports => snapshot.ports.len(),
             Tab::Processes => snapshot.processes.len(),
             Tab::Docker => snapshot.containers.len(),
+            Tab::Volumes => snapshot.volumes.len(),
         }
     }
 
@@ -149,9 +169,19 @@ impl App {
                 let Some(c) = self.selected_process() else {
                     return;
                 };
-                let pid = c.pid.clone();
+                let pid = c.pid;
                 if !self.marked_pids.remove(&pid) {
                     self.marked_pids.insert(pid);
+                }
+            }
+
+            Tab::Volumes => {
+                let Some(v) = self.selected_volume() else {
+                    return;
+                };
+                let name = v.name.clone();
+                if !self.marked_volume_names.remove(&name) {
+                    self.marked_volume_names.insert(name);
                 }
             }
 
@@ -169,9 +199,12 @@ impl App {
                     snapshot.containers.iter().map(|c| c.id.clone()).collect();
             }
             Tab::Processes => {
-                self.marked_pids = snapshot.processes.iter().map(|c| c.pid.clone()).collect();
+                self.marked_pids = snapshot.processes.iter().map(|c| c.pid).collect();
             }
-
+            Tab::Volumes => {
+                self.marked_volume_names =
+                    snapshot.volumes.iter().map(|v| v.name.clone()).collect();
+            }
             Tab::Ports => {}
         }
     }
@@ -181,6 +214,7 @@ impl App {
             Tab::Docker => self.marked_container_ids.clear(),
             Tab::Processes => self.marked_pids.clear(),
             Tab::Ports => {}
+            Tab::Volumes => self.marked_volume_names.clear(),
         }
     }
 
@@ -189,6 +223,7 @@ impl App {
         let Some(snapshot) = &self.snapshot else {
             self.marked_container_ids.clear();
             self.marked_pids.clear();
+            self.marked_volume_names.clear();
             return;
         };
 
@@ -199,6 +234,11 @@ impl App {
 
         let alive_pids: HashSet<u32> = snapshot.processes.iter().map(|p| p.pid).collect();
         self.marked_pids.retain(|pid| alive_pids.contains(pid));
+
+        let alive_volumes: HashSet<&str> =
+            snapshot.volumes.iter().map(|v| v.name.as_str()).collect();
+        self.marked_volume_names
+            .retain(|name| alive_volumes.contains(name.as_str()));
     }
 
     pub fn clamp_selection_after_refresh(&mut self) {
@@ -305,6 +345,14 @@ impl App {
         }
         let snapshot = self.snapshot.as_ref()?;
         snapshot.containers.get(self.selected_row)
+    }
+
+    pub fn selected_volume(&self) -> Option<&DockerVolume> {
+        if self.tab != Tab::Volumes {
+            return None;
+        }
+        let snapshot = self.snapshot.as_ref()?;
+        snapshot.volumes.get(self.selected_row)
     }
 
     pub fn stop_selected_container(&mut self) {
@@ -434,6 +482,90 @@ impl App {
         self.input_mode = InputMode::Normal;
     }
 
+    pub fn request_remove_selected_volumes(&mut self) {
+        let targets = self.volume_action_targets();
+        if targets.is_empty() {
+            self.set_status("no volume selected");
+            return;
+        }
+
+        if let Some(snapshot) = &self.snapshot {
+            let in_use: Vec<&str> = targets
+                .iter()
+                .filter(|name| {
+                    snapshot
+                        .volumes
+                        .iter()
+                        .any(|volume| volume.name == **name && volume.in_use)
+                })
+                .map(String::as_str)
+                .collect();
+            if !in_use.is_empty() {
+                self.set_status(format!(
+                    "refusing to delete in-use volumes: {}",
+                    in_use.join(", ")
+                ));
+                return;
+            }
+        }
+
+        self.input_mode = InputMode::ConfirmVolumeRemove { targets };
+    }
+
+    pub fn confirm_volume_remove(&mut self) {
+        let InputMode::ConfirmVolumeRemove { targets } = self.input_mode.clone() else {
+            return;
+        };
+        self.input_mode = InputMode::Normal;
+
+        let total = targets.len();
+        let mut ok = 0usize;
+        let mut last_err: Option<String> = None;
+
+        for name in &targets {
+            match crate::actions::docker::remove_volume(name, self.config.docker_host(), false) {
+                Ok(()) => ok += 1,
+                Err(error) => last_err = Some(error.to_string()),
+            }
+        }
+
+        self.marked_volume_names.clear();
+        self.needs_refresh = true;
+
+        if let Some(err) = last_err {
+            self.set_status(format!("removed volumes {ok}/{total}: {err}"));
+        } else {
+            self.set_status(format!("removed volumes {ok}/{total}"));
+        }
+    }
+
+    pub fn jump_from_selected_volume(&mut self) {
+        let Some(volume) = self.selected_volume().cloned() else {
+            self.set_status("no volume selected");
+            return;
+        };
+
+        if volume.container_names.is_empty() {
+            self.set_status(format!(
+                "volume {} is not used by any container",
+                volume.name
+            ));
+            return;
+        }
+
+        let target = volume.container_names[0].clone();
+        if self.jump_to_container_by_name(&target) {
+            let extra = if volume.container_names.len() > 1 {
+                format!(" ({} linked)", volume.container_names.len())
+            } else {
+                String::new()
+            };
+            self.set_status(format!("jumped to container {target}{extra}"));
+        } else {
+            self.set_status(format!("container {target} not in Docker list"));
+        }
+    }
+
     pub fn selected_port(&self) -> Option<&PortBinding> {
         if self.tab != Tab::Ports {
             return None;
@@ -537,7 +669,26 @@ impl App {
         }
 
         self.selected_process()
-            .map(|p| vec![(p.pid.clone(), p.name.clone())])
+            .map(|p| vec![(p.pid, p.name.clone())])
+            .unwrap_or_default()
+    }
+
+    fn volume_action_targets(&self) -> Vec<String> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+
+        if !self.marked_volume_names.is_empty() {
+            return snapshot
+                .volumes
+                .iter()
+                .filter(|volume| self.marked_volume_names.contains(&volume.name))
+                .map(|volume| volume.name.clone())
+                .collect();
+        }
+
+        self.selected_volume()
+            .map(|volume| vec![volume.name.clone()])
             .unwrap_or_default()
     }
 }
@@ -577,6 +728,7 @@ mod tests {
             processes: vec![],
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         }
     }
@@ -624,6 +776,7 @@ mod tests {
             processes: vec![process(42, "docker-proxy")],
             containers: vec![container("redis-dev", vec![6379])],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
 
@@ -645,6 +798,7 @@ mod tests {
             processes: vec![process(99, "other"), process(100, "node")],
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
 
@@ -664,6 +818,7 @@ mod tests {
             processes: vec![], // DEV list empty / filtered
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
         app.jump_from_selected_port();
@@ -751,6 +906,7 @@ mod tests {
             processes: vec![],
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
         app.search_query = "node".to_string();
@@ -811,6 +967,7 @@ mod tests {
             processes: vec![],
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
         assert!(app.select_search_status().is_none());
@@ -833,6 +990,7 @@ mod tests {
             processes: vec![],
             containers: vec![],
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         });
         app.prune_marks_after_refresh();

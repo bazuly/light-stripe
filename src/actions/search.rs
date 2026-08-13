@@ -1,4 +1,4 @@
-use crate::models::{DevProcess, DockerContainer, PortBinding};
+use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding};
 use crate::output::table::format_port_owner;
 use crate::tui::app::{App, Tab};
 
@@ -35,6 +35,13 @@ pub fn find_matches(app: &App) -> Vec<usize> {
             .filter(|(_, container)| container_matches(container, &query))
             .map(|(index, _)| index)
             .collect(),
+        Tab::Volumes => snapshot
+            .volumes
+            .iter()
+            .enumerate()
+            .filter(|(_, volume)| volume_matches(volume, &query))
+            .map(|(index, _)| index)
+            .collect(),
     }
 }
 
@@ -59,6 +66,15 @@ fn container_matches(container: &DockerContainer, query: &str) -> bool {
         || container.image.to_ascii_lowercase().contains(query)
         || container.status.to_ascii_lowercase().contains(query)
         || format_ports(container).contains(query)
+}
+
+fn volume_matches(volume: &DockerVolume, query: &str) -> bool {
+    volume.name.to_ascii_lowercase().contains(query)
+        || volume.driver.to_ascii_lowercase().contains(query)
+        || volume
+            .container_names
+            .iter()
+            .any(|name| name.to_ascii_lowercase().contains(query))
 }
 
 fn format_ports(container: &DockerContainer) -> String {
@@ -151,6 +167,7 @@ mod tests {
             processes,
             containers,
             docker_error: None,
+            volumes: vec![],
             stats: empty_stats(),
         }
     }

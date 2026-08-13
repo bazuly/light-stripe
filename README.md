@@ -19,6 +19,7 @@ You know the feeling: Redis is up, Postgres is up, three `node` processes are ru
 - Shows which processes (and Docker containers) are listening on which ports
 - Lists “dev-looking” processes with CPU and memory
 - Shows Docker containers with CPU / MEM, and lets you stop / restart / remove them
+- Lists Docker volumes (size, in-use, linked containers) and can delete unused ones
 - Works as a CLI for scripting (`--format json`) or as a live TUI dashboard
 
 Right now it works best on **Linux and WSL**. macOS / Windows are on the radar.
@@ -115,11 +116,12 @@ Full-screen view. Data refreshes about every two seconds (press `r` to refresh n
 
 ## Using the TUI
 
-Three tabs:
+Four tabs:
 
 1. **Ports** — who owns a port; `Enter` / `g` jumps to the process or container
 2. **Processes** — local servers / tooling; mark rows, then `x` to kill (with confirm)
 3. **Docker** — containers with CPU / MEM; mark rows, then stop / restart / remove
+4. **Volumes** — Docker volumes with size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (with confirm)
 
 <p align="center">
   <img src="assets/light-stripe-tui-docker.png" alt="Light Stripe TUI — Docker tab showing containers with CPU and memory usage" width="820" />
@@ -135,23 +137,23 @@ Three tabs:
 |-----|----------------|
 | `q` / `Esc` | Quit (in a confirm prompt, `Esc` cancels instead) |
 | `r` | Refresh |
-| `1` `2` `3` | Jump to a tab |
+| `1` `2` `3` `4` | Jump to a tab |
 | `Tab` | Cycle tabs |
 | `↑` `↓` or `k` `j` | Move around |
 | `PgUp` / `PgDn` | Move by a page |
 | `Home` / `End` | First / last row |
 | `/` | Search and jump to a match |
 | `n` / `N` | Next / previous match |
-| `Enter` / `g` | Jump from port → process or container (Ports tab) |
-| `Space` | Toggle mark on the current row (Docker / Processes; shown as `●` / `○`) |
+| `Enter` / `g` | Jump: port → process/container; volume → linked container |
+| `Space` | Toggle mark on the current row (Docker / Processes / Volumes; shown as `●` / `○`) |
 | `a` | Mark all rows on the current tab |
 | `A` | Unmark all |
 | `x` | Kill process(es) — confirm with `y`, cancel with `n` / `Esc` (Processes) |
 | `s` | Stop container(s) (Docker) |
 | `S` | Restart container(s) (Docker) |
-| `d` | Remove container(s) — confirm with `y`, cancel with `n` / `Esc` (Docker) |
+| `d` | Remove container(s) or unused volume(s) — confirm with `y`, cancel with `n` / `Esc` |
 
-**Marks:** if any rows are marked, `s` / `S` / `d` / `x` apply to **all marked** rows; otherwise they apply to the highlighted row only. Marks are tracked by container id / pid, so a refresh does not scramble your selection.
+**Marks:** if any rows are marked, `s` / `S` / `d` / `x` apply to **all marked** rows; otherwise they apply to the highlighted row only. Marks are tracked by container id / pid / volume name, so a refresh does not scramble your selection. In-use volumes are not deleted (no force).
 
 Search is intentionally simple: type a query, hit Enter, and the selection jumps to the first hit. It does not hide the rest of the list.
 

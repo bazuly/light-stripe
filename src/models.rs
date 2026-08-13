@@ -46,3 +46,13 @@ pub struct DockerContainer {
     pub cpu_percent: Option<f32>,
     pub memory_bytes: Option<u64>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DockerVolume {
+    pub name: String,
+    pub driver: String,
+    pub size_bytes: Option<u64>,
+    pub in_use: bool,
+    /// Container names that mount this volume. One to one
+    pub container_names: Vec<String>,
+}
