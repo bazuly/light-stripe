@@ -7,7 +7,7 @@
 #   cargo run -- config
 
 # TUI auto-refresh interval (seconds)
-refresh_secs = 15
+refresh_secs = 3
 
 # Ports hidden on the TUI Ports tab
 ignored_ports = [53, 323, 5353, 0]

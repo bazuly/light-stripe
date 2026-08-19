@@ -326,8 +326,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
     app.ensure_visible(visible);
 
     let Some(snapshot) = &app.snapshot else {
-        let widget =
-            Paragraph::new("Loading volumes...").block(Block::bordered().title("Volumes"));
+        let widget = Paragraph::new("Loading volumes...").block(Block::bordered().title("Volumes"));
         frame.render_widget(widget, area);
         return;
     };
@@ -340,8 +339,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     if snapshot.volumes.is_empty() {
-        let widget =
-            Paragraph::new("No volumes found.").block(Block::bordered().title("Volumes"));
+        let widget = Paragraph::new("No volumes found.").block(Block::bordered().title("Volumes"));
         frame.render_widget(widget, area);
         return;
     }

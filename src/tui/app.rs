@@ -1,9 +1,6 @@
 use crate::actions::search;
-use crate::collectors::docker::collect;
-use crate::collectors::{enrich, ports, processes, system, volumes};
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
-use anyhow::Result;
 use std::collections::HashSet;
 
 pub struct Snapshot {
@@ -84,48 +81,14 @@ impl App {
         self.clear_status();
     }
 
-    pub fn reload_snapshot(&mut self) -> Result<()> {
-        let mut ports = ports::collect(None)?;
-        ports.retain(|binding| !self.config.ignored_ports.contains(&binding.port));
-        let processes = processes::collect(true, &self.config.extra_dev_markers)?;
-        let stats = system::collect()?;
-
-        let (containers, docker_error) = match collect(self.config.docker_host()) {
-            Ok(containers) => {
-                enrich::attach_docker(&mut ports, &containers);
-                (containers, None)
-            }
-            Err(error) => (Vec::new(), Some(error.to_string())),
-        };
-
-        let volumes = if docker_error.is_some() {
-            Vec::new()
-        } else {
-            match volumes::collect(self.config.docker_host()) {
-                Ok(volumes) => volumes,
-                Err(error) => {
-                    // Keep containers visible; surface volume failure in status.
-                    self.set_status(format!("volumes unavailable: {error}"));
-                    Vec::new()
-                }
-            }
-        };
-
-        self.snapshot = Some(Snapshot {
-            ports,
-            processes,
-            containers,
-            volumes,
-            docker_error,
-            stats,
-        });
-
+    pub fn apply_snapshot(&mut self, snapshot: Snapshot, warning: Option<String>) {
+        self.snapshot = Some(snapshot);
         self.last_error = None;
-
+        if let Some(msg) = warning {
+            self.set_status(msg);
+        }
         self.prune_marks_after_refresh();
         self.clamp_selection_after_refresh();
-
-        Ok(())
     }
 
     pub fn active_list_len(&self) -> usize {

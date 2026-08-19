@@ -30,7 +30,7 @@ pub struct Config {
 }
 
 fn default_refresh_secs() -> u64 {
-    15
+    3
 }
 
 fn default_ignored_ports() -> Vec<u16> {
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn default_values() {
         let config = Config::default();
-        assert_eq!(config.refresh_secs, 15);
+        assert_eq!(config.refresh_secs, 3);
         assert_eq!(config.ignored_ports, vec![53, 323, 5353, 0]);
         assert!(config.extra_dev_markers.is_empty());
     }
