@@ -1,7 +1,9 @@
 use crate::actions::search;
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
+use crate::tui::collector_worker::ToWorker;
 use std::collections::HashSet;
+use std::sync::mpsc;
 
 pub struct Snapshot {
     pub ports: Vec<PortBinding>,
@@ -30,6 +32,8 @@ pub struct App {
     pub marked_container_ids: HashSet<String>,
     pub marked_pids: HashSet<u32>,
     pub marked_volume_names: HashSet<String>,
+    pub action_in_flight: bool,
+    pub to_worker: Option<mpsc::Sender<ToWorker>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -68,6 +72,8 @@ impl App {
             marked_container_ids: HashSet::new(),
             marked_pids: HashSet::new(),
             marked_volume_names: HashSet::new(),
+            action_in_flight: false,
+            to_worker: None,
         }
     }
 
@@ -89,6 +95,24 @@ impl App {
         }
         self.prune_marks_after_refresh();
         self.clamp_selection_after_refresh();
+    }
+
+    fn enqueue(&mut self, cmd: ToWorker, pending_status: &str) {
+        if self.action_in_flight {
+            self.set_status("action already running");
+            return;
+        }
+        let Some(tx) = &self.to_worker else {
+            self.set_status("worker not connected");
+            return;
+        };
+        match tx.send(cmd) {
+            Ok(()) => {
+                self.action_in_flight = true;
+                self.set_status(pending_status.to_string());
+            }
+            Err(_) => self.set_status("worker died"),
+        }
     }
 
     pub fn active_list_len(&self) -> usize {
@@ -325,22 +349,9 @@ impl App {
             self.set_status("no container selected");
             return;
         }
-        let total = targets.len();
-        let mut selected: usize = 0; // selected rows
-        let mut last_err: Option<String> = None;
-        for (id, _name) in &targets {
-            match crate::actions::docker::stop_container(id, self.config.docker_host()) {
-                Ok(()) => selected += 1,
-                Err(e) => last_err = Some(e.to_string()),
-            }
-        }
+        let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
         self.marked_container_ids.clear();
-        self.needs_refresh = true;
-        if let Some(err) = last_err {
-            self.set_status(format!("stopped {selected}/{total}: {err}"));
-        } else {
-            self.set_status(format!("stopped {selected}/{total}"));
-        }
+        self.enqueue(ToWorker::StopContainers { ids }, "stopping container");
     }
 
     pub fn restart_selected_container(&mut self) {
@@ -350,22 +361,9 @@ impl App {
             self.set_status("no container selected");
             return;
         }
-        let total = targets.len();
-        let mut selected: usize = 0; // selected rows
-        let mut last_err: Option<String> = None;
-        for (id, _name) in &targets {
-            match crate::actions::docker::restart_container(id, self.config.docker_host()) {
-                Ok(()) => selected += 1,
-                Err(e) => last_err = Some(e.to_string()),
-            }
-        }
+        let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
         self.marked_container_ids.clear();
-        self.needs_refresh = true;
-        if let Some(err) = last_err {
-            self.set_status(format!("restarted {selected}/{total}: {err}"));
-        } else {
-            self.set_status(format!("restarted {selected}/{total}"));
-        }
+        self.enqueue(ToWorker::RestartContainers { ids }, "restarting container");
     }
 
     pub fn request_kill_selected_process(&mut self) {
@@ -383,25 +381,9 @@ impl App {
             return;
         };
         self.input_mode = InputMode::Normal;
-
-        let total = targets.len();
-        let mut selected: usize = 0; // selected rows
-        let mut last_err: Option<String> = None;
-
-        for (pid, _name) in &targets {
-            match crate::actions::process::kill_process(*pid) {
-                Ok(()) => selected += 1,
-                Err(e) => last_err = Some(e.to_string()),
-            }
-        }
-
+        let pids: Vec<u32> = targets.into_iter().map(|(pid, _)| pid).collect();
         self.marked_pids.clear();
-        self.needs_refresh = true;
-        if let Some(err) = last_err {
-            self.set_status(format!("killed pid {selected}/{total}: {err}"));
-        } else {
-            self.set_status(format!("killed {selected}/{total}"))
-        }
+        self.enqueue(ToWorker::KillProcesses { pids }, "killing…");
     }
 
     pub fn request_remove_selected_container(&mut self) {
@@ -419,26 +401,12 @@ impl App {
         };
 
         self.input_mode = InputMode::Normal;
-        let total = targets.len();
-        let mut selected: usize = 0;
-        let mut last_err: Option<String> = None;
-
-        for (id, _name) in &targets {
-            match crate::actions::docker::remove_container(id, self.config.docker_host()) {
-                Ok(()) => {
-                    selected += 1;
-                }
-                Err(e) => last_err = Some(e.to_string()),
-            }
-        }
-
+        let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
         self.marked_container_ids.clear();
-        self.needs_refresh = true;
-        if let Some(err) = last_err {
-            self.set_status(format!("removed {selected}/{total}: {err}"));
-        } else {
-            self.set_status(format!("removed {selected}/{total}"));
-        }
+        self.enqueue(
+            ToWorker::RemoveContainers { ids },
+            "removing docker-container…",
+        );
     }
 
     pub fn cancel_pending_action(&mut self) {
@@ -480,26 +448,11 @@ impl App {
             return;
         };
         self.input_mode = InputMode::Normal;
-
-        let total = targets.len();
-        let mut ok = 0usize;
-        let mut last_err: Option<String> = None;
-
-        for name in &targets {
-            match crate::actions::docker::remove_volume(name, self.config.docker_host(), false) {
-                Ok(()) => ok += 1,
-                Err(error) => last_err = Some(error.to_string()),
-            }
-        }
-
         self.marked_volume_names.clear();
-        self.needs_refresh = true;
-
-        if let Some(err) = last_err {
-            self.set_status(format!("removed volumes {ok}/{total}: {err}"));
-        } else {
-            self.set_status(format!("removed volumes {ok}/{total}"));
-        }
+        self.enqueue(
+            ToWorker::RemoveVolumes { names: targets },
+            "removing volumes…",
+        );
     }
 
     pub fn jump_from_selected_volume(&mut self) {
@@ -598,6 +551,7 @@ impl App {
         self.table_state.select(Some(index));
     }
 
+    // retrieve docker-containers id's and names
     fn docker_action_targets(&self) -> Vec<(String, String)> {
         let Some(snapshot) = &self.snapshot else {
             return Vec::new();
