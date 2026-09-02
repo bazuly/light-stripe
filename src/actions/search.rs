@@ -13,7 +13,7 @@ pub fn find_matches(app: &App) -> Vec<usize> {
     }
     let query = query.to_lowercase();
 
-    match app.tab {
+    match app.nav.tab {
         Tab::Ports => snapshot
             .ports
             .iter()
@@ -149,7 +149,7 @@ mod tests {
 
     fn app_with(tab: Tab, snapshot: Snapshot, query: &str) -> App {
         let mut app = App::new(crate::config::Config::default());
-        app.tab = tab;
+        app.nav.tab = tab;
         app.snapshot = Some(snapshot);
         app.search.query = query.to_string();
         app.input_mode = InputMode::Normal;

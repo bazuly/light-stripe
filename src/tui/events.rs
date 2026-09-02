@@ -63,7 +63,7 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('4') => app.set_tab(Tab::Volumes),
 
         KeyCode::Tab => {
-            let next_tab = match app.tab {
+            let next_tab = match app.nav.tab {
                 Tab::Ports => Tab::Processes,
                 Tab::Processes => Tab::Docker,
                 Tab::Docker => Tab::Volumes,
@@ -78,33 +78,35 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::PageDown => app.move_selection(20),
 
         KeyCode::Home => {
-            app.selected_row = 0;
-            app.table_state.select(Some(0));
+            if app.active_list_len() > 0 {
+                app.nav.select_row(0);
+            }
         }
 
         KeyCode::End => {
-            let last = app.active_list_len().saturating_sub(1);
-            app.selected_row = last;
-            app.table_state.select(Some(last));
+            let len = app.active_list_len();
+            if len > 0 {
+                app.nav.select_row(len - 1);
+            }
         }
 
-        KeyCode::Char('x') | KeyCode::Char('X') if app.tab == Tab::Processes => {
+        KeyCode::Char('x') | KeyCode::Char('X') if app.nav.tab == Tab::Processes => {
             app.request_kill_selected_process();
         }
 
-        KeyCode::Char('s') if app.tab == Tab::Docker => app.stop_selected_container(),
-        KeyCode::Char('S') if app.tab == Tab::Docker => app.restart_selected_container(),
-        KeyCode::Char('d') | KeyCode::Char('D') if app.tab == Tab::Docker => {
+        KeyCode::Char('s') if app.nav.tab == Tab::Docker => app.stop_selected_container(),
+        KeyCode::Char('S') if app.nav.tab == Tab::Docker => app.restart_selected_container(),
+        KeyCode::Char('d') | KeyCode::Char('D') if app.nav.tab == Tab::Docker => {
             app.request_remove_selected_container();
         }
-        KeyCode::Char('d') | KeyCode::Char('D') if app.tab == Tab::Volumes => {
+        KeyCode::Char('d') | KeyCode::Char('D') if app.nav.tab == Tab::Volumes => {
             app.request_remove_selected_volumes();
         }
 
-        KeyCode::Enter | KeyCode::Char('g') if app.tab == Tab::Ports => {
+        KeyCode::Enter | KeyCode::Char('g') if app.nav.tab == Tab::Ports => {
             app.jump_from_selected_port();
         }
-        KeyCode::Enter | KeyCode::Char('g') if app.tab == Tab::Volumes => {
+        KeyCode::Enter | KeyCode::Char('g') if app.nav.tab == Tab::Volumes => {
             app.jump_from_selected_volume();
         }
 

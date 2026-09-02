@@ -53,24 +53,24 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
-    let ports_label = if app.tab == Tab::Ports {
+    let ports_label = if app.nav.tab == Tab::Ports {
         "▶ 1:Ports"
     } else {
         "  1:Ports"
     };
-    let processes_label = if app.tab == Tab::Processes {
+    let processes_label = if app.nav.tab == Tab::Processes {
         "▶ 2:DEV Processes"
     } else {
         "  2:DEV Processes"
     };
 
-    let docker_label = if app.tab == Tab::Docker {
+    let docker_label = if app.nav.tab == Tab::Docker {
         "▶ 3:Docker"
     } else {
         "  3:Docker"
     };
 
-    let volumes_label = if app.tab == Tab::Volumes {
+    let volumes_label = if app.nav.tab == Tab::Volumes {
         "▶ 4:Volumes"
     } else {
         "  4:Volumes"
@@ -82,7 +82,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
     let line = Line::from(vec![
         Span::styled(
             ports_label,
-            if app.tab == Tab::Ports {
+            if app.nav.tab == Tab::Ports {
                 active
             } else {
                 inactive
@@ -91,7 +91,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             processes_label,
-            if app.tab == Tab::Processes {
+            if app.nav.tab == Tab::Processes {
                 active
             } else {
                 inactive
@@ -100,7 +100,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             docker_label,
-            if app.tab == Tab::Docker {
+            if app.nav.tab == Tab::Docker {
                 active
             } else {
                 inactive
@@ -109,7 +109,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
         Span::raw("   "),
         Span::styled(
             volumes_label,
-            if app.tab == Tab::Volumes {
+            if app.nav.tab == Tab::Volumes {
                 active
             } else {
                 inactive
@@ -122,7 +122,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn draw_main(frame: &mut Frame, area: Rect, app: &mut App) {
-    match app.tab {
+    match app.nav.tab {
         Tab::Ports => draw_ports_table(frame, area, app),
         Tab::Processes => draw_processes_table(frame, area, app),
         Tab::Docker => draw_docker_table(frame, area, app),
@@ -132,7 +132,7 @@ fn draw_main(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn draw_ports_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let visible = viewport_rows(area);
-    app.ensure_visible(visible);
+    app.nav.ensure_visible(visible);
 
     let Some(snapshot) = &app.snapshot else {
         let widget = Paragraph::new("Loading ports...").block(Block::bordered().title("Ports"));
@@ -163,7 +163,7 @@ fn draw_ports_table(frame: &mut Frame, area: Rect, app: &mut App) {
         })
         .collect();
 
-    let selected_row = app.selected_row;
+    let selected_row = app.nav.selected_row;
     let total = snapshot.ports.len();
 
     let widget = Table::new(
@@ -184,12 +184,12 @@ fn draw_ports_table(frame: &mut Frame, area: Rect, app: &mut App) {
             .add_modifier(Modifier::BOLD),
     )
     .highlight_symbol("▶ ");
-    frame.render_stateful_widget(widget, area, &mut app.table_state);
+    frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
 
 fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let visible = viewport_rows(area);
-    app.ensure_visible(visible);
+    app.nav.ensure_visible(visible);
 
     let Some(snapshot) = &app.snapshot else {
         let widget =
@@ -235,7 +235,7 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
             ])
         })
         .collect();
-    let selected_row = app.selected_row;
+    let selected_row = app.nav.selected_row;
     let total = snapshot.containers.len();
     let widget = Table::new(
         rows,
@@ -256,7 +256,7 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
             .add_modifier(Modifier::BOLD),
     )
     .highlight_symbol("▶ ");
-    frame.render_stateful_widget(widget, area, &mut app.table_state);
+    frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
 
 fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -297,7 +297,7 @@ fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         })
         .collect();
 
-    let selected_row = app.selected_row;
+    let selected_row = app.nav.selected_row;
     let total = snapshot.processes.len();
 
     let widget = Table::new(
@@ -318,12 +318,12 @@ fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
             .add_modifier(Modifier::BOLD),
     )
     .highlight_symbol("▶ ");
-    frame.render_stateful_widget(widget, area, &mut app.table_state);
+    frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
 
 fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let visible = viewport_rows(area);
-    app.ensure_visible(visible);
+    app.nav.ensure_visible(visible);
 
     let Some(snapshot) = &app.snapshot else {
         let widget = Paragraph::new("Loading volumes...").block(Block::bordered().title("Volumes"));
@@ -375,7 +375,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         })
         .collect();
 
-    let selected_row = app.selected_row;
+    let selected_row = app.nav.selected_row;
     let total = snapshot.volumes.len();
     let widget = Table::new(
         rows,
@@ -395,7 +395,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
             .add_modifier(Modifier::BOLD),
     )
     .highlight_symbol("▶ ");
-    frame.render_stateful_widget(widget, area, &mut app.table_state);
+    frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
@@ -434,7 +434,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn footer_hints(app: &App) -> String {
-    match app.tab {
+    match app.nav.tab {
         Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-4: tabs".to_string(),
         Tab::Processes => {
             let prefix = if app.marked_pids.is_empty() {

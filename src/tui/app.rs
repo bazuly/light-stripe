@@ -2,9 +2,12 @@ use crate::actions::search;
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
 use crate::tui::collector_worker::ToWorker;
+use crate::tui::state::nav::Navigation;
 use crate::tui::state::search::SearchState;
 use std::collections::HashSet;
 use std::sync::mpsc;
+
+pub use crate::tui::state::nav::Tab;
 
 pub struct Snapshot {
     pub ports: Vec<PortBinding>,
@@ -19,31 +22,18 @@ pub struct Snapshot {
 pub struct App {
     pub config: Config,
     pub snapshot: Option<Snapshot>, // None before first refresh
-    pub tab: Tab,
-    pub selected_row: usize,
-    pub list_offset: usize, // first visible row without header
-    pub table_state: ratatui::widgets::TableState, // ratatui default table state
+    pub nav: Navigation,
     pub should_quit: bool,
     pub needs_refresh: bool,
     pub last_error: Option<String>,
     pub input_mode: InputMode,
     pub search: SearchState,
-    // pub search_query: String,
-    // pub search_match_index: usize,
     pub status_message: Option<String>,
     pub marked_container_ids: HashSet<String>,
     pub marked_pids: HashSet<u32>,
     pub marked_volume_names: HashSet<String>,
     pub action_in_flight: bool,
     pub to_worker: Option<mpsc::Sender<ToWorker>>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Tab {
-    Ports,
-    Processes,
-    Docker,
-    Volumes,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -60,17 +50,12 @@ impl App {
         Self {
             config,
             snapshot: None,
-            tab: Tab::Ports,
-            selected_row: 0,
-            list_offset: 0,
-            table_state: ratatui::widgets::TableState::default(),
+            nav: Navigation::new(),
             should_quit: false,
             needs_refresh: true,
             last_error: None,
             input_mode: InputMode::Normal,
             search: SearchState::default(),
-            // search_query: String::new(),
-            // search_match_index: 0,
             status_message: None,
             marked_container_ids: HashSet::new(),
             marked_pids: HashSet::new(),
@@ -81,11 +66,8 @@ impl App {
     }
 
     pub fn set_tab(&mut self, tab: Tab) {
-        self.tab = tab;
-        self.selected_row = 0;
-        self.list_offset = 0;
+        self.nav.set_tab(tab);
         self.search.clear();
-        self.search.match_index = 0;
         self.input_mode = InputMode::Normal;
         self.clear_status();
     }
@@ -123,7 +105,7 @@ impl App {
             return 0;
         };
 
-        match self.tab {
+        match self.nav.tab {
             Tab::Ports => snapshot.ports.len(),
             Tab::Processes => snapshot.processes.len(),
             Tab::Docker => snapshot.containers.len(),
@@ -133,18 +115,11 @@ impl App {
 
     pub fn move_selection(&mut self, delta: isize) {
         let len = self.active_list_len();
-        if len == 0 {
-            return;
-        }
-
-        let max = len - 1;
-        let next = (self.selected_row as isize + delta).clamp(0, max as isize) as usize;
-        self.selected_row = next;
-        self.table_state.select(Some(next));
+        self.nav.move_by(delta, len)
     }
 
     pub fn toggle_mark_current(&mut self) {
-        match self.tab {
+        match self.nav.tab {
             Tab::Docker => {
                 let Some(c) = self.selected_container() else {
                     return;
@@ -183,7 +158,7 @@ impl App {
         let Some(snapshot) = &self.snapshot else {
             return;
         };
-        match self.tab {
+        match self.nav.tab {
             Tab::Docker => {
                 self.marked_container_ids =
                     snapshot.containers.iter().map(|c| c.id.clone()).collect();
@@ -200,7 +175,7 @@ impl App {
     }
 
     pub fn unmark_all(&mut self) {
-        match self.tab {
+        match self.nav.tab {
             Tab::Docker => self.marked_container_ids.clear(),
             Tab::Processes => self.marked_pids.clear(),
             Tab::Ports => {}
@@ -233,27 +208,7 @@ impl App {
 
     pub fn clamp_selection_after_refresh(&mut self) {
         let len = self.active_list_len();
-        if len == 0 {
-            self.selected_row = 0;
-            self.list_offset = 0;
-            self.table_state.select(None);
-            return;
-        }
-        if self.selected_row >= len {
-            self.selected_row = len - 1;
-        }
-        self.table_state.select(Some(self.selected_row))
-    }
-
-    pub fn ensure_visible(&mut self, viewport_rows: usize) {
-        if viewport_rows == 0 {
-            return;
-        }
-        if self.selected_row < self.list_offset {
-            self.list_offset = self.selected_row;
-        } else if self.selected_row >= self.list_offset + viewport_rows {
-            self.list_offset = self.selected_row - viewport_rows + 1;
-        }
+        self.nav.clamp_to_len(len);
     }
 
     pub fn start_search(&mut self) {
@@ -282,9 +237,7 @@ impl App {
         };
 
         self.search.match_index = index;
-        let row = matches[index];
-        self.selected_row = row;
-        self.table_state.select(Some(row));
+        self.nav.select_row(matches[index]);
     }
 
     pub fn select_search_status(&self) -> Option<String> {
@@ -314,27 +267,27 @@ impl App {
     }
 
     pub fn selected_process(&self) -> Option<&DevProcess> {
-        if self.tab != Tab::Processes {
+        if self.nav.tab != Tab::Processes {
             return None;
         }
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.processes.get(self.selected_row)
+        snapshot.processes.get(self.nav.selected_row)
     }
 
     pub fn selected_container(&self) -> Option<&DockerContainer> {
-        if self.tab != Tab::Docker {
+        if self.nav.tab != Tab::Docker {
             return None;
         }
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.containers.get(self.selected_row)
+        snapshot.containers.get(self.nav.selected_row)
     }
 
     pub fn selected_volume(&self) -> Option<&DockerVolume> {
-        if self.tab != Tab::Volumes {
+        if self.nav.tab != Tab::Volumes {
             return None;
         }
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.volumes.get(self.selected_row)
+        snapshot.volumes.get(self.nav.selected_row)
     }
 
     pub fn stop_selected_container(&mut self) {
@@ -478,11 +431,11 @@ impl App {
     }
 
     pub fn selected_port(&self) -> Option<&PortBinding> {
-        if self.tab != Tab::Ports {
+        if self.nav.tab != Tab::Ports {
             return None;
         }
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.ports.get(self.selected_row)
+        snapshot.ports.get(self.nav.selected_row)
     }
 
     pub fn jump_from_selected_port(&mut self) {
@@ -523,7 +476,7 @@ impl App {
             return false;
         };
         self.set_tab(Tab::Docker);
-        self.select_row(index);
+        self.nav.select_row(index);
         true
     }
 
@@ -536,14 +489,8 @@ impl App {
             return false;
         };
         self.set_tab(Tab::Processes);
-        self.select_row(index);
+        self.nav.select_row(index);
         true
-    }
-
-    fn select_row(&mut self, index: usize) {
-        self.selected_row = index;
-        self.list_offset = 0;
-        self.table_state.select(Some(index));
     }
 
     // retrieve docker-containers id's and names
@@ -647,7 +594,7 @@ mod tests {
 
     fn app_with_ports(n: usize) -> App {
         let mut app = App::new(Config::default());
-        app.tab = Tab::Ports;
+        app.nav.tab = Tab::Ports;
         app.snapshot = Some(snapshot_ports(n));
         app.needs_refresh = false;
         app
@@ -679,7 +626,7 @@ mod tests {
     #[test]
     fn jump_from_port_to_container() {
         let mut app = App::new(Config::default());
-        app.tab = Tab::Ports;
+        app.nav.tab = Tab::Ports;
         let mut binding = port(6379, "docker-proxy");
         binding.pid = Some(42);
         binding.container_name = Some("redis-dev".to_string());
@@ -694,15 +641,15 @@ mod tests {
 
         app.jump_from_selected_port();
 
-        assert_eq!(app.tab, Tab::Docker);
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.tab, Tab::Docker);
+        assert_eq!(app.nav.selected_row, 0);
         assert!(app.status_message.as_deref().unwrap().contains("redis-dev"))
     }
 
     #[test]
     fn jump_from_port_to_process_when_no_container() {
         let mut app = App::new(Config::default());
-        app.tab = Tab::Ports;
+        app.nav.tab = Tab::Ports;
         let mut binding = port(3000, "node");
         binding.pid = Some(100);
         app.snapshot = Some(Snapshot {
@@ -715,14 +662,14 @@ mod tests {
         });
 
         app.jump_from_selected_port();
-        assert_eq!(app.tab, Tab::Processes);
-        assert_eq!(app.selected_row, 1)
+        assert_eq!(app.nav.tab, Tab::Processes);
+        assert_eq!(app.nav.selected_row, 1)
     }
 
     #[test]
     fn jump_reports_when_process_not_in_dev_list() {
         let mut app = App::new(Config::default());
-        app.tab = Tab::Ports;
+        app.nav.tab = Tab::Ports;
         let mut binding = port(5353, "mDNSResponder");
         binding.pid = Some(1503);
         app.snapshot = Some(Snapshot {
@@ -734,7 +681,7 @@ mod tests {
             stats: empty_stats(),
         });
         app.jump_from_selected_port();
-        assert_eq!(app.tab, Tab::Ports);
+        assert_eq!(app.nav.tab, Tab::Ports);
         assert!(
             app.status_message
                 .as_deref()
@@ -747,64 +694,64 @@ mod tests {
     fn move_selection_clamps_at_bounds() {
         let mut app = app_with_ports(3);
         app.move_selection(-1);
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.selected_row, 0);
         app.move_selection(100);
-        assert_eq!(app.selected_row, 2);
+        assert_eq!(app.nav.selected_row, 2);
         app.move_selection(-1);
-        assert_eq!(app.selected_row, 1);
+        assert_eq!(app.nav.selected_row, 1);
     }
 
     #[test]
     fn move_selection_noop_when_empty() {
         let mut app = App::new(Config::default());
         app.move_selection(1);
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.selected_row, 0);
     }
 
     #[test]
     fn clamp_selection_after_refresh_when_row_out_of_range() {
         let mut app = app_with_ports(2);
-        app.selected_row = 99;
+        app.nav.selected_row = 99;
         app.clamp_selection_after_refresh();
-        assert_eq!(app.selected_row, 1);
+        assert_eq!(app.nav.selected_row, 1);
     }
 
     #[test]
     fn clamp_selection_clears_when_list_empty() {
         let mut app = App::new(Config::default());
-        app.selected_row = 105;
-        app.list_offset = 2;
+        app.nav.selected_row = 105;
+        app.nav.list_offset = 2;
 
         app.clamp_selection_after_refresh();
-        assert_eq!(app.selected_row, 0);
-        assert_eq!(app.list_offset, 0);
+        assert_eq!(app.nav.selected_row, 0);
+        assert_eq!(app.nav.list_offset, 0);
     }
 
     #[test]
     fn ensure_visible_scrolls_down_and_up() {
         let mut app = app_with_ports(10);
-        app.list_offset = 0;
-        app.selected_row = 7;
+        app.nav.list_offset = 0;
+        app.nav.selected_row = 7;
 
-        app.ensure_visible(5);
-        assert_eq!(app.list_offset, 3);
-        app.selected_row = 1;
-        app.ensure_visible(5);
-        assert_eq!(app.list_offset, 1);
+        app.nav.ensure_visible(5);
+        assert_eq!(app.nav.list_offset, 3);
+        app.nav.selected_row = 1;
+        app.nav.ensure_visible(5);
+        assert_eq!(app.nav.list_offset, 1);
     }
 
     #[test]
     fn set_tab_resets_selection_and_search() {
         let mut app = app_with_ports(3);
-        app.selected_row = 2;
-        app.list_offset = 1;
+        app.nav.selected_row = 2;
+        app.nav.list_offset = 1;
         app.search.match_index = 1;
         app.input_mode = InputMode::Search;
 
         app.set_tab(Tab::Docker);
 
-        assert_eq!(app.tab, Tab::Docker);
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.tab, Tab::Docker);
+        assert_eq!(app.nav.selected_row, 0);
         assert_eq!(app.search.match_index, 0);
         assert_eq!(app.input_mode, InputMode::Normal);
         assert!(app.search.query.is_empty());
@@ -824,30 +771,30 @@ mod tests {
         app.search.query = "node".to_string();
 
         app.apply_search(0);
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.selected_row, 0);
         assert_eq!(app.search.match_index, 0);
 
         app.apply_search(1); // n
-        assert_eq!(app.selected_row, 2);
+        assert_eq!(app.nav.selected_row, 2);
         assert_eq!(app.search.match_index, 1);
 
         app.apply_search(1); // wrap
-        assert_eq!(app.selected_row, 0);
+        assert_eq!(app.nav.selected_row, 0);
         assert_eq!(app.search.match_index, 0);
 
         app.apply_search(-1); // N wrap backwards
-        assert_eq!(app.selected_row, 2);
+        assert_eq!(app.nav.selected_row, 2);
     }
 
     #[test]
     fn apply_search_noop_when_no_matches() {
         let mut app = app_with_ports(2);
-        app.selected_row = 1;
+        app.nav.selected_row = 1;
         app.search.query = "zzz".to_string();
 
         app.apply_search(0);
 
-        assert_eq!(app.selected_row, 1)
+        assert_eq!(app.nav.selected_row, 1)
     }
 
     #[test]
