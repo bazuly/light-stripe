@@ -40,9 +40,9 @@ fn handle_search_key(app: &mut App, key: KeyEvent) {
             app.apply_search(0);
             app.input_mode = InputMode::Normal;
         }
-        KeyCode::Backspace => app.pop_search_char(),
+        KeyCode::Backspace => app.search.pop_char(),
         KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-            app.push_search_char(ch);
+            app.search.push_char(ch);
         }
         _ => {}
     }

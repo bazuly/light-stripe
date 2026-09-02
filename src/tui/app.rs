@@ -2,6 +2,7 @@ use crate::actions::search;
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
 use crate::tui::collector_worker::ToWorker;
+use crate::tui::state::search::SearchState;
 use std::collections::HashSet;
 use std::sync::mpsc;
 
@@ -26,8 +27,9 @@ pub struct App {
     pub needs_refresh: bool,
     pub last_error: Option<String>,
     pub input_mode: InputMode,
-    pub search_query: String,
-    pub search_match_index: usize,
+    pub search: SearchState,
+    // pub search_query: String,
+    // pub search_match_index: usize,
     pub status_message: Option<String>,
     pub marked_container_ids: HashSet<String>,
     pub marked_pids: HashSet<u32>,
@@ -66,8 +68,9 @@ impl App {
             needs_refresh: true,
             last_error: None,
             input_mode: InputMode::Normal,
-            search_query: String::new(),
-            search_match_index: 0,
+            search: SearchState::default(),
+            // search_query: String::new(),
+            // search_match_index: 0,
             status_message: None,
             marked_container_ids: HashSet::new(),
             marked_pids: HashSet::new(),
@@ -81,8 +84,8 @@ impl App {
         self.tab = tab;
         self.selected_row = 0;
         self.list_offset = 0;
-        self.search_query.clear();
-        self.search_match_index = 0;
+        self.search.clear();
+        self.search.match_index = 0;
         self.input_mode = InputMode::Normal;
         self.clear_status();
     }
@@ -255,22 +258,14 @@ impl App {
 
     pub fn start_search(&mut self) {
         self.input_mode = InputMode::Search;
-        self.search_query.clear();
-        self.search_match_index = 0;
+        self.search.clear();
+        self.search.match_index = 0;
     }
 
     pub fn cancel_search(&mut self) {
         self.input_mode = InputMode::Normal;
-        self.search_query.clear();
-        self.search_match_index = 0;
-    }
-
-    pub fn push_search_char(&mut self, ch: char) {
-        self.search_query.push(ch);
-    }
-
-    pub fn pop_search_char(&mut self) {
-        self.search_query.pop();
+        self.search.clear();
+        self.search.match_index = 0;
     }
 
     pub fn apply_search(&mut self, step: isize) {
@@ -283,27 +278,27 @@ impl App {
         let index = if step == 0 {
             0
         } else {
-            (self.search_match_index as isize + step).rem_euclid(count as isize) as usize
+            (self.search.match_index as isize + step).rem_euclid(count as isize) as usize
         };
 
-        self.search_match_index = index;
+        self.search.match_index = index;
         let row = matches[index];
         self.selected_row = row;
         self.table_state.select(Some(row));
     }
 
     pub fn select_search_status(&self) -> Option<String> {
-        if self.search_query.trim().is_empty() {
+        if self.search.query.trim().is_empty() {
             return None;
         }
         let matches = search::find_matches(self);
         if matches.is_empty() {
-            return Some(format!("/{}", self.search_query) + "  (no matches)");
+            return Some(format!("/{}", self.search.query) + "  (no matches)");
         }
         Some(format!(
             "/{}  [{}/{}]",
-            self.search_query,
-            self.search_match_index + 1,
+            self.search.query,
+            self.search.match_index + 1,
             matches.len()
         ))
     }
@@ -803,16 +798,16 @@ mod tests {
         let mut app = app_with_ports(3);
         app.selected_row = 2;
         app.list_offset = 1;
-        app.search_match_index = 1;
+        app.search.match_index = 1;
         app.input_mode = InputMode::Search;
 
         app.set_tab(Tab::Docker);
 
         assert_eq!(app.tab, Tab::Docker);
         assert_eq!(app.selected_row, 0);
-        assert_eq!(app.search_match_index, 0);
+        assert_eq!(app.search.match_index, 0);
         assert_eq!(app.input_mode, InputMode::Normal);
-        assert!(app.search_query.is_empty());
+        assert!(app.search.query.is_empty());
     }
 
     #[test]
@@ -826,19 +821,19 @@ mod tests {
             volumes: vec![],
             stats: empty_stats(),
         });
-        app.search_query = "node".to_string();
+        app.search.query = "node".to_string();
 
         app.apply_search(0);
         assert_eq!(app.selected_row, 0);
-        assert_eq!(app.search_match_index, 0);
+        assert_eq!(app.search.match_index, 0);
 
         app.apply_search(1); // n
         assert_eq!(app.selected_row, 2);
-        assert_eq!(app.search_match_index, 1);
+        assert_eq!(app.search.match_index, 1);
 
         app.apply_search(1); // wrap
         assert_eq!(app.selected_row, 0);
-        assert_eq!(app.search_match_index, 0);
+        assert_eq!(app.search.match_index, 0);
 
         app.apply_search(-1); // N wrap backwards
         assert_eq!(app.selected_row, 2);
@@ -848,7 +843,7 @@ mod tests {
     fn apply_search_noop_when_no_matches() {
         let mut app = app_with_ports(2);
         app.selected_row = 1;
-        app.search_query = "zzz".to_string();
+        app.search.query = "zzz".to_string();
 
         app.apply_search(0);
 
@@ -858,22 +853,22 @@ mod tests {
     #[test]
     fn start_and_cancel_search() {
         let mut app = App::new(Config::default());
-        app.search_query = "old".to_string();
+        app.search.query = "old".to_string();
 
         app.start_search();
         assert_eq!(app.input_mode, InputMode::Search);
-        assert!(app.search_query.is_empty());
+        assert!(app.search.query.is_empty());
 
-        app.push_search_char('a');
-        app.push_search_char('b');
+        app.search.push_char('a');
+        app.search.push_char('b');
 
-        assert_eq!(app.search_query, "ab");
-        app.pop_search_char();
-        assert_eq!(app.search_query, "a");
+        assert_eq!(app.search.query, "ab");
+        app.search.pop_char();
+        assert_eq!(app.search.query, "a");
 
         app.cancel_search();
         assert_eq!(app.input_mode, InputMode::Normal);
-        assert!(app.search_query.is_empty());
+        assert!(app.search.query.is_empty());
     }
 
     #[test]
@@ -888,13 +883,13 @@ mod tests {
             stats: empty_stats(),
         });
         assert!(app.select_search_status().is_none());
-        app.search_query = "zzz".to_string();
+        app.search.query = "zzz".to_string();
         assert_eq!(
             app.select_search_status().as_deref(),
             Some("/zzz  (no matches)")
         );
-        app.search_query = "node".to_string();
-        app.search_match_index = 0;
+        app.search.query = "node".to_string();
+        app.search.match_index = 0;
         assert_eq!(app.select_search_status().as_deref(), Some("/node  [1/2]"));
     }
 

@@ -7,7 +7,7 @@ pub fn find_matches(app: &App) -> Vec<usize> {
         return Vec::new();
     };
 
-    let query = app.search_query.trim();
+    let query = app.search.query.trim();
     if query.is_empty() {
         return Vec::new();
     }
@@ -151,7 +151,7 @@ mod tests {
         let mut app = App::new(crate::config::Config::default());
         app.tab = tab;
         app.snapshot = Some(snapshot);
-        app.search_query = query.to_string();
+        app.search.query = query.to_string();
         app.input_mode = InputMode::Normal;
 
         app
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn no_snapshot_returns_no_matches() {
         let mut app = App::new(crate::config::Config::default());
-        app.search_query = "8080".to_string();
+        app.search.query = "8080".to_string();
         assert!(find_matches(&app).is_empty());
     }
 

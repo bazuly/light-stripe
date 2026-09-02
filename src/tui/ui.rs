@@ -420,7 +420,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
             format!("Delete {} volumes? [y/N]", targets.len())
         }
     } else if app.input_mode == InputMode::Search {
-        format!("search: {}_", app.search_query)
+        format!("search: {}_", app.search.query)
     } else if let Some(status) = &app.status_message {
         format!("{status} | {}", footer_hints(app))
     } else if let Some(search) = app.select_search_status() {

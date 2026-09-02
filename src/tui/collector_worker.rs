@@ -26,7 +26,10 @@ pub enum FromWorker {
     },
     Failed(String),
     /// any action command result
-    ActionDone { summary: String, refresh: bool },
+    ActionDone {
+        summary: String,
+        refresh: bool,
+    },
 }
 
 /// thread worker channels
