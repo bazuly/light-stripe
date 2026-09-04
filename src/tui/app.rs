@@ -2,8 +2,9 @@ use crate::actions::search;
 use crate::config::Config;
 use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
 use crate::tui::collector_worker::ToWorker;
+use crate::tui::state::marks::Marks;
 use crate::tui::state::nav::Navigation;
-use crate::tui::state::search::SearchState;
+use crate::tui::state::search::Search;
 use std::collections::HashSet;
 use std::sync::mpsc;
 
@@ -27,11 +28,9 @@ pub struct App {
     pub needs_refresh: bool,
     pub last_error: Option<String>,
     pub input_mode: InputMode,
-    pub search: SearchState,
+    pub search: Search,
     pub status_message: Option<String>,
-    pub marked_container_ids: HashSet<String>,
-    pub marked_pids: HashSet<u32>,
-    pub marked_volume_names: HashSet<String>,
+    pub marks: Marks,
     pub action_in_flight: bool,
     pub to_worker: Option<mpsc::Sender<ToWorker>>,
 }
@@ -55,11 +54,9 @@ impl App {
             needs_refresh: true,
             last_error: None,
             input_mode: InputMode::Normal,
-            search: SearchState::default(),
+            search: Search::default(),
             status_message: None,
-            marked_container_ids: HashSet::new(),
-            marked_pids: HashSet::new(),
-            marked_volume_names: HashSet::new(),
+            marks: Marks::default(),
             action_in_flight: false,
             to_worker: None,
         }
@@ -125,9 +122,7 @@ impl App {
                     return;
                 };
                 let id = c.id.clone();
-                if !self.marked_container_ids.remove(&id) {
-                    self.marked_container_ids.insert(id);
-                }
+                self.marks.toggle_contaier(id);
             }
 
             Tab::Processes => {
@@ -135,9 +130,7 @@ impl App {
                     return;
                 };
                 let pid = c.pid;
-                if !self.marked_pids.remove(&pid) {
-                    self.marked_pids.insert(pid);
-                }
+                self.marks.toggle_pid(pid);
             }
 
             Tab::Volumes => {
@@ -145,9 +138,7 @@ impl App {
                     return;
                 };
                 let name = v.name.clone();
-                if !self.marked_volume_names.remove(&name) {
-                    self.marked_volume_names.insert(name);
-                }
+                self.marks.toggle_volumes(name);
             }
 
             Tab::Ports => {}
@@ -160,50 +151,40 @@ impl App {
         };
         match self.nav.tab {
             Tab::Docker => {
-                self.marked_container_ids =
-                    snapshot.containers.iter().map(|c| c.id.clone()).collect();
+                self.marks
+                    .mark_all_containers(snapshot.containers.iter().map(|c| c.id.clone()));
             }
             Tab::Processes => {
-                self.marked_pids = snapshot.processes.iter().map(|c| c.pid).collect();
+                self.marks
+                    .mark_all_pids(snapshot.processes.iter().map(|p| p.pid));
             }
             Tab::Volumes => {
-                self.marked_volume_names =
-                    snapshot.volumes.iter().map(|v| v.name.clone()).collect();
+                self.marks
+                    .mark_all_volumes(snapshot.volumes.iter().map(|v| v.name.clone()));
             }
             Tab::Ports => {}
         }
     }
 
     pub fn unmark_all(&mut self) {
-        match self.nav.tab {
-            Tab::Docker => self.marked_container_ids.clear(),
-            Tab::Processes => self.marked_pids.clear(),
-            Tab::Ports => {}
-            Tab::Volumes => self.marked_volume_names.clear(),
-        }
+        self.marks.clear(self.nav.tab)
     }
 
-    /// After refresh, remove id's which are not in snapshot
+    /// After refresh, remove items (containers, pids, volumes) which are not in snapshot
     pub fn prune_marks_after_refresh(&mut self) {
         let Some(snapshot) = &self.snapshot else {
-            self.marked_container_ids.clear();
-            self.marked_pids.clear();
-            self.marked_volume_names.clear();
+            self.marks.clear_all();
             return;
         };
 
         let alive_containers: HashSet<&str> =
             snapshot.containers.iter().map(|c| c.id.as_str()).collect();
-        self.marked_container_ids
-            .retain(|id| alive_containers.contains(id.as_str()));
-
         let alive_pids: HashSet<u32> = snapshot.processes.iter().map(|p| p.pid).collect();
-        self.marked_pids.retain(|pid| alive_pids.contains(pid));
-
         let alive_volumes: HashSet<&str> =
             snapshot.volumes.iter().map(|v| v.name.as_str()).collect();
-        self.marked_volume_names
-            .retain(|name| alive_volumes.contains(name.as_str()));
+
+        self.marks
+            .prune(alive_containers, alive_pids, alive_volumes);
     }
 
     pub fn clamp_selection_after_refresh(&mut self) {
@@ -292,26 +273,43 @@ impl App {
 
     pub fn stop_selected_container(&mut self) {
         self.cancel_pending_action();
+        let tab = Tab::Docker;
         let targets = self.docker_action_targets();
         if targets.is_empty() {
             self.set_status("no container selected");
             return;
         }
         let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
-        self.marked_container_ids.clear();
+        self.marks.clear(tab);
         self.enqueue(ToWorker::StopContainers { ids }, "stopping container");
     }
 
     pub fn restart_selected_container(&mut self) {
         self.cancel_pending_action();
+        let tab = Tab::Docker;
         let targets = self.docker_action_targets();
         if targets.is_empty() {
             self.set_status("no container selected");
             return;
         }
         let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
-        self.marked_container_ids.clear();
+        self.marks.clear(tab);
         self.enqueue(ToWorker::RestartContainers { ids }, "restarting container");
+    }
+
+    pub fn confirm_docker_remove(&mut self) {
+        let tab = Tab::Docker;
+        let InputMode::ConfirmDockerRemove { targets } = self.input_mode.clone() else {
+            return;
+        };
+
+        self.input_mode = InputMode::Normal;
+        let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
+        self.marks.clear(tab);
+        self.enqueue(
+            ToWorker::RemoveContainers { ids },
+            "removing docker-container…",
+        );
     }
 
     pub fn request_kill_selected_process(&mut self) {
@@ -325,12 +323,14 @@ impl App {
     }
 
     pub fn confirm_kill_selected_process(&mut self) {
+        let tab = Tab::Processes;
         let InputMode::ConfirmProcessRemove { targets } = self.input_mode.clone() else {
             return;
         };
         self.input_mode = InputMode::Normal;
         let pids: Vec<u32> = targets.into_iter().map(|(pid, _)| pid).collect();
-        self.marked_pids.clear();
+        self.marks.clear(tab);
+
         self.enqueue(ToWorker::KillProcesses { pids }, "killing…");
     }
 
@@ -341,20 +341,6 @@ impl App {
             return;
         }
         self.input_mode = InputMode::ConfirmDockerRemove { targets }
-    }
-
-    pub fn confirm_docker_remove(&mut self) {
-        let InputMode::ConfirmDockerRemove { targets } = self.input_mode.clone() else {
-            return;
-        };
-
-        self.input_mode = InputMode::Normal;
-        let ids: Vec<String> = targets.into_iter().map(|(id, _)| id).collect();
-        self.marked_container_ids.clear();
-        self.enqueue(
-            ToWorker::RemoveContainers { ids },
-            "removing docker-container…",
-        );
     }
 
     pub fn cancel_pending_action(&mut self) {
@@ -396,7 +382,7 @@ impl App {
             return;
         };
         self.input_mode = InputMode::Normal;
-        self.marked_volume_names.clear();
+        self.marks.volumes.clear();
         self.enqueue(
             ToWorker::RemoveVolumes { names: targets },
             "removing volumes…",
@@ -499,11 +485,11 @@ impl App {
             return Vec::new();
         };
 
-        if !self.marked_container_ids.is_empty() {
+        if !self.marks.containers.is_empty() {
             return snapshot
                 .containers
                 .iter()
-                .filter(|c| self.marked_container_ids.contains(&c.id))
+                .filter(|c| self.marks.containers.contains(&c.id))
                 .map(|c| (c.id.clone(), c.name.clone()))
                 .collect();
         }
@@ -518,11 +504,11 @@ impl App {
             return Vec::new();
         };
 
-        if !self.marked_pids.is_empty() {
+        if !self.marks.pids.is_empty() {
             return snapshot
                 .processes
                 .iter()
-                .filter(|process| self.marked_pids.contains(&process.pid))
+                .filter(|process| self.marks.pids.contains(&process.pid))
                 .map(|process| (process.pid.clone(), process.name.clone()))
                 .collect();
         }
@@ -537,11 +523,11 @@ impl App {
             return Vec::new();
         };
 
-        if !self.marked_volume_names.is_empty() {
+        if !self.marks.volumes.is_empty() {
             return snapshot
                 .volumes
                 .iter()
-                .filter(|volume| self.marked_volume_names.contains(&volume.name))
+                .filter(|volume| self.marks.volumes.contains(&volume.name))
                 .map(|volume| volume.name.clone())
                 .collect();
         }
@@ -843,7 +829,7 @@ mod tests {
     #[test]
     fn prune_drops_missing_ids() {
         let mut app = App::new(Config::default());
-        app.marked_container_ids.insert("gone".into());
+        app.marks.containers.insert("gone".into());
         app.snapshot = Some(Snapshot {
             ports: vec![],
             processes: vec![],
@@ -853,6 +839,6 @@ mod tests {
             stats: empty_stats(),
         });
         app.prune_marks_after_refresh();
-        assert!(app.marked_container_ids.is_empty())
+        assert!(app.marks.containers.is_empty())
     }
 }

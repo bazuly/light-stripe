@@ -220,7 +220,7 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .containers
         .iter()
         .map(|container| {
-            let mark = if app.marked_container_ids.contains(&container.id) {
+            let mark = if app.marks.containers.contains(&container.id) {
                 "●"
             } else {
                 "○"
@@ -282,7 +282,7 @@ fn draw_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .processes
         .iter()
         .map(|process| {
-            let mark = if app.marked_pids.contains(&process.pid) {
+            let mark = if app.marks.pids.contains(&process.pid) {
                 "●"
             } else {
                 "○"
@@ -352,7 +352,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .volumes
         .iter()
         .map(|volume| {
-            let mark = if app.marked_volume_names.contains(&volume.name) {
+            let mark = if app.marks.volumes.contains(&volume.name) {
                 "●"
             } else {
                 "○"
@@ -437,28 +437,28 @@ fn footer_hints(app: &App) -> String {
     match app.nav.tab {
         Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-4: tabs".to_string(),
         Tab::Processes => {
-            let prefix = if app.marked_pids.is_empty() {
+            let prefix = if app.marks.pids.is_empty() {
                 String::new()
             } else {
-                format!("{} selected processes | ", app.marked_pids.len())
+                format!("{} selected processes | ", app.marks.pids.len())
             };
             format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-4: tabs")
         }
         Tab::Docker => {
-            let prefix = if app.marked_container_ids.is_empty() {
+            let prefix = if app.marks.containers.is_empty() {
                 String::new()
             } else {
-                format!("{} selected containers | ", app.marked_container_ids.len())
+                format!("{} selected containers | ", app.marks.containers.len())
             };
             format!(
                 "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | 1-4: tabs"
             )
         }
         Tab::Volumes => {
-            let prefix = if app.marked_volume_names.is_empty() {
+            let prefix = if app.marks.volumes.is_empty() {
                 String::new()
             } else {
-                format!("{} selected volumes | ", app.marked_volume_names.len())
+                format!("{} selected volumes | ", app.marks.volumes.len())
             };
             format!(
                 "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | 1-4: tabs"

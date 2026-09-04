@@ -1,10 +1,10 @@
 #[derive(Debug, Default, Clone)]
-pub struct SearchState {
+pub struct Search {
     pub query: String,
     pub match_index: usize,
 }
 
-impl SearchState {
+impl Search {
     pub fn clear(&mut self) {
         self.query.clear();
         self.match_index = 0;
