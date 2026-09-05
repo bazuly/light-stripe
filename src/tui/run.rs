@@ -13,7 +13,7 @@ pub fn run(config: Config) -> Result<()> {
     let result: Result<()> = ratatui::run(|terminal| {
         let mut app = App::new(config);
         // set up "to_worker" in app state
-        app.to_worker = Some(worker.to_worker.clone());
+        app.to_worker.bind(worker.to_worker.clone());
         let mut last_refresh = Instant::now() - refresh_every;
         let mut refresh_in_flight = true;
 
@@ -43,7 +43,7 @@ pub fn run(config: Config) -> Result<()> {
                         last_refresh = Instant::now();
                     }
                     FromWorker::ActionDone { summary, refresh } => {
-                        app.action_in_flight = false;
+                        app.to_worker.on_done();
                         if refresh {
                             app.needs_refresh = true;
                         }

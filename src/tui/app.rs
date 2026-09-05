@@ -5,8 +5,8 @@ use crate::tui::collector_worker::ToWorker;
 use crate::tui::state::marks::Marks;
 use crate::tui::state::nav::Navigation;
 use crate::tui::state::search::Search;
+use crate::tui::state::worker::WorkerClient;
 use std::collections::HashSet;
-use std::sync::mpsc;
 
 pub use crate::tui::state::nav::Tab;
 
@@ -31,8 +31,7 @@ pub struct App {
     pub search: Search,
     pub status_message: Option<String>,
     pub marks: Marks,
-    pub action_in_flight: bool,
-    pub to_worker: Option<mpsc::Sender<ToWorker>>,
+    pub to_worker: WorkerClient,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -57,8 +56,7 @@ impl App {
             search: Search::default(),
             status_message: None,
             marks: Marks::default(),
-            action_in_flight: false,
-            to_worker: None,
+            to_worker: WorkerClient::default(),
         }
     }
 
@@ -80,20 +78,9 @@ impl App {
     }
 
     fn enqueue(&mut self, cmd: ToWorker, pending_status: &str) {
-        if self.action_in_flight {
-            self.set_status("action already running");
-            return;
-        }
-        let Some(tx) = &self.to_worker else {
-            self.set_status("worker not connected");
-            return;
-        };
-        match tx.send(cmd) {
-            Ok(()) => {
-                self.action_in_flight = true;
-                self.set_status(pending_status.to_string());
-            }
-            Err(_) => self.set_status("worker died"),
+        match self.to_worker.enqueue(cmd) {
+            Ok(()) => self.set_status(pending_status),
+            Err(msg) => self.set_status(msg),
         }
     }
 
