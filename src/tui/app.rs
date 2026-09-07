@@ -109,7 +109,7 @@ impl App {
                     return;
                 };
                 let id = c.id.clone();
-                self.marks.toggle_contaier(id);
+                self.marks.toggle_container(id);
             }
 
             Tab::Processes => {

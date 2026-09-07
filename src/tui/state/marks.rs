@@ -9,7 +9,7 @@ pub struct Marks {
 }
 
 impl Marks {
-    pub fn toggle_contaier(&mut self, id: String) {
+    pub fn toggle_container(&mut self, id: String) {
         if !self.containers.remove(&id) {
             self.containers.insert(id);
         }
