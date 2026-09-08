@@ -1,4 +1,4 @@
-use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, RegularProcess};
+use crate::models::{DockerContainer, DockerVolume, PortBinding, Process};
 use crate::output::table::format_port_owner;
 use crate::tui::app::{App, Tab};
 
@@ -21,21 +21,19 @@ pub fn find_matches(app: &App) -> Vec<usize> {
             .filter(|(_, binding)| port_matches(binding, &query))
             .map(|(index, _)| index)
             .collect(),
-        Tab::DevProcesses => snapshot
-            .dev_processes
-            .iter()
-            .enumerate()
-            .filter(|(_, process)| dev_process_matches(process, &query))
-            .map(|(index, _)| index)
-            .collect(),
-        Tab::RegularProcesses => snapshot
-            .regular_processes
-            .iter()
-            .enumerate()
-            .filter(|(_, process)| regular_process_matches(process, &query))
-            .map(|(index, _)| index)
-            .collect(),
-
+        Tab::DevProcesses | Tab::RegularProcesses => {
+            let processes = match app.nav.tab {
+                Tab::DevProcesses => &snapshot.dev_processes,
+                Tab::RegularProcesses => &snapshot.regular_processes,
+                _ => unreachable!(),
+            };
+            processes
+                .iter()
+                .enumerate()
+                .filter(|(_, process)| process_matches(process, &query))
+                .map(|(index, _)| index)
+                .collect()
+        }
         Tab::Docker => snapshot
             .containers
             .iter()
@@ -63,14 +61,7 @@ fn port_matches(binding: &PortBinding, query: &str) -> bool {
             .unwrap_or(false)
 }
 
-// TODO: DRY
-fn dev_process_matches(process: &DevProcess, query: &str) -> bool {
-    process.pid.to_string().contains(query)
-        || process.name.to_ascii_lowercase().contains(query)
-        || process.cmdline.to_ascii_lowercase().contains(query)
-}
-
-fn regular_process_matches(process: &RegularProcess, query: &str) -> bool {
+fn process_matches(process: &Process, query: &str) -> bool {
     process.pid.to_string().contains(query)
         || process.name.to_ascii_lowercase().contains(query)
         || process.cmdline.to_ascii_lowercase().contains(query)
@@ -140,8 +131,8 @@ mod tests {
         }
     }
 
-    fn process(pid: u32, name: &str, cmdline: &str) -> DevProcess {
-        DevProcess {
+    fn process(pid: u32, name: &str, cmdline: &str) -> Process {
+        Process {
             pid,
             name: name.to_string(),
             cmdline: cmdline.to_string(),
@@ -175,8 +166,8 @@ mod tests {
 
     fn snapshot(
         ports: Vec<PortBinding>,
-        dev_processes: Vec<DevProcess>,
-        regular_processes: Vec<RegularProcess>,
+        dev_processes: Vec<Process>,
+        regular_processes: Vec<Process>,
         containers: Vec<DockerContainer>,
     ) -> Snapshot {
         Snapshot {
@@ -275,6 +266,24 @@ mod tests {
                 vec![],
             ),
             "SERVER",
+        );
+        assert_eq!(find_matches(&app), vec![1]);
+    }
+
+    #[test]
+    fn regular_processes_match_independently() {
+        let app = app_with(
+            Tab::RegularProcesses,
+            snapshot(
+                vec![],
+                vec![process(1, "node", "node server.js")],
+                vec![
+                    process(10, "zsh", "/bin/zsh"),
+                    process(20, "python", "python worker.py"),
+                ],
+                vec![],
+            ),
+            "worker",
         );
         assert_eq!(find_matches(&app), vec![1]);
     }

@@ -103,6 +103,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
                 inactive
             },
         ),
+        Span::raw("   "),
         Span::styled(
             regular_processes_label,
             if app.nav.tab == Tab::RegularProcesses {
@@ -138,8 +139,22 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
 fn draw_main(frame: &mut Frame, area: Rect, app: &mut App) {
     match app.nav.tab {
         Tab::Ports => draw_ports_table(frame, area, app),
-        Tab::DevProcesses => draw_dev_processes_table(frame, area, app),
-        Tab::RegularProcesses => draw_regular_processes_table(frame, area, app),
+        Tab::DevProcesses => draw_processes_table(
+            frame,
+            area,
+            app,
+            "DEV Processes",
+            "No dev processes found.",
+            true,
+        ),
+        Tab::RegularProcesses => draw_processes_table(
+            frame,
+            area,
+            app,
+            "All Processes",
+            "No processes found.",
+            false,
+        ),
         Tab::Docker => draw_docker_table(frame, area, app),
         Tab::Volumes => draw_volumes_table(frame, area, app),
     }
@@ -274,17 +289,32 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
 
-fn draw_dev_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
+fn draw_processes_table(
+    frame: &mut Frame,
+    area: Rect,
+    app: &mut App,
+    title: &str,
+    empty_message: &str,
+    dev_tab: bool,
+) {
+    let visible = viewport_rows(area);
+    app.nav.ensure_visible(visible);
+
     let Some(snapshot) = &app.snapshot else {
         let widget =
-            Paragraph::new("Loading processes...").block(Block::bordered().title("DEV Processes"));
+            Paragraph::new("Loading processes...").block(Block::bordered().title(title));
         frame.render_widget(widget, area);
         return;
     };
 
-    if snapshot.dev_processes.is_empty() {
-        let widget = Paragraph::new("No dev processes found.")
-            .block(Block::bordered().title("DEV Processes"));
+    let processes = if dev_tab {
+        &snapshot.dev_processes
+    } else {
+        &snapshot.regular_processes
+    };
+
+    if processes.is_empty() {
+        let widget = Paragraph::new(empty_message).block(Block::bordered().title(title));
         frame.render_widget(widget, area);
         return;
     }
@@ -293,8 +323,7 @@ fn draw_dev_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .style(Style::new().add_modifier(Modifier::BOLD))
         .bottom_margin(1);
 
-    let rows: Vec<Row> = snapshot
-        .dev_processes
+    let rows: Vec<Row> = processes
         .iter()
         .map(|process| {
             let mark = if app.marks.pids.contains(&process.pid) {
@@ -313,7 +342,7 @@ fn draw_dev_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         .collect();
 
     let selected_row = app.nav.selected_row;
-    let total = snapshot.dev_processes.len();
+    let total = processes.len();
 
     let widget = Table::new(
         rows,
@@ -326,73 +355,7 @@ fn draw_dev_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
         ],
     )
     .header(header)
-    .block(Block::bordered().title(format!("DEV Processes [{}/{}]", selected_row + 1, total)))
-    .row_highlight_style(
-        Style::new()
-            .bg(Color::LightBlue)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("▶ ");
-    frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
-}
-
-fn draw_regular_processes_table(frame: &mut Frame, area: Rect, app: &mut App) {
-    let Some(snapshot) = &app.snapshot else {
-        let widget = Paragraph::new("Loading processes...")
-            .block(Block::bordered().title("all running processes"));
-        frame.render_widget(widget, area);
-        return;
-    };
-
-    if snapshot.regular_processes.is_empty() {
-        let widget = Paragraph::new("No processes found.")
-            .block(Block::bordered().title("all running processes"));
-        frame.render_widget(widget, area);
-        return;
-    }
-
-    let header = Row::new(vec!["PID", "CPU", "MEM", "NAME", "CMD"])
-        .style(Style::new().add_modifier(Modifier::BOLD))
-        .bottom_margin(1);
-
-    let rows: Vec<Row> = snapshot
-        .regular_processes
-        .iter()
-        .map(|process| {
-            let mark = if app.marks.pids.contains(&process.pid) {
-                "●"
-            } else {
-                "○"
-            };
-            Row::new(vec![
-                process.pid.to_string(),
-                format_cpu(process.cpu_usage),
-                format_memory_mb(process.memory_bytes),
-                format!("{mark} {}", process.name),
-                truncate_text(&process.cmdline, MAX_CMDLINE_LEN),
-            ])
-        })
-        .collect();
-
-    let selected_row = app.nav.selected_row;
-    let total = snapshot.regular_processes.len();
-
-    let widget = Table::new(
-        rows,
-        [
-            Constraint::Length(8),
-            Constraint::Length(8),
-            Constraint::Length(12),
-            Constraint::Length(14),
-            Constraint::Min(20),
-        ],
-    )
-    .header(header)
-    .block(Block::bordered().title(format!(
-        "running processes [{}/{}]",
-        selected_row + 1,
-        total
-    )))
+    .block(Block::bordered().title(format!("{title} [{}/{}]", selected_row + 1, total)))
     .row_highlight_style(
         Style::new()
             .bg(Color::LightBlue)
@@ -516,22 +479,14 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 
 fn footer_hints(app: &App) -> String {
     match app.nav.tab {
-        Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-4: tabs".to_string(),
-        Tab::DevProcesses => {
+        Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-5: tabs".to_string(),
+        Tab::DevProcesses | Tab::RegularProcesses => {
             let prefix = if app.marks.pids.is_empty() {
                 String::new()
             } else {
                 format!("{} selected processes | ", app.marks.pids.len())
             };
-            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-4: tabs")
-        }
-        Tab::RegularProcesses => {
-            let prefix = if app.marks.pids.is_empty() {
-                String::new()
-            } else {
-                format!("{} selected processes | ", app.marks.pids.len())
-            };
-            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-4: tabs")
+            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-5: tabs")
         }
         Tab::Docker => {
             let prefix = if app.marks.containers.is_empty() {
@@ -540,7 +495,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected containers | ", app.marks.containers.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | 1-4: tabs"
+                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | 1-5: tabs"
             )
         }
         Tab::Volumes => {
@@ -550,7 +505,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected volumes | ", app.marks.volumes.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | 1-4: tabs"
+                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | 1-5: tabs"
             )
         }
     }

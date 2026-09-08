@@ -1,8 +1,6 @@
 use crate::actions::search;
 use crate::config::Config;
-use crate::models::{
-    DevProcess, DockerContainer, DockerVolume, PortBinding, RegularProcess, Snapshot,
-};
+use crate::models::{DockerContainer, DockerVolume, PortBinding, Process, Snapshot};
 use crate::tui::collector_worker::ToWorker;
 use crate::tui::state::marks::Marks;
 use crate::tui::state::nav::Navigation;
@@ -110,19 +108,11 @@ impl App {
                 self.marks.toggle_container(id);
             }
 
-            Tab::DevProcesses => {
-                let Some(c) = self.selected_dev_process() else {
+            Tab::DevProcesses | Tab::RegularProcesses => {
+                let Some(process) = self.selected_process() else {
                     return;
                 };
-                let pid = c.pid;
-                self.marks.toggle_pid(pid);
-            }
-
-            Tab::RegularProcesses => {
-                let Some(c) = self.selected_regular_process() else {
-                    return;
-                };
-                let pid = c.pid;
+                let pid = process.pid;
                 self.marks.toggle_pid(pid);
             }
 
@@ -250,20 +240,14 @@ impl App {
         self.status_message = None;
     }
 
-    pub fn selected_dev_process(&self) -> Option<&DevProcess> {
-        if self.nav.tab != Tab::DevProcesses {
-            return None;
-        }
+    pub fn selected_process(&self) -> Option<&Process> {
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.dev_processes.get(self.nav.selected_row)
-    }
-
-    pub fn selected_regular_process(&self) -> Option<&RegularProcess> {
-        if self.nav.tab != Tab::RegularProcesses {
-            return None;
-        }
-        let snapshot = self.snapshot.as_ref()?;
-        snapshot.regular_processes.get(self.nav.selected_row)
+        let processes = match self.nav.tab {
+            Tab::DevProcesses => &snapshot.dev_processes,
+            Tab::RegularProcesses => &snapshot.regular_processes,
+            _ => return None,
+        };
+        processes.get(self.nav.selected_row)
     }
 
     pub fn selected_container(&self) -> Option<&DockerContainer> {
@@ -514,12 +498,17 @@ impl App {
             return Vec::new();
         };
 
+        let processes = match self.nav.tab {
+            Tab::DevProcesses => &snapshot.dev_processes,
+            Tab::RegularProcesses => &snapshot.regular_processes,
+            _ => return Vec::new(),
+        };
+
         if !self.marks.pids.is_empty() {
-            return snapshot
-                .processes
+            return processes
                 .iter()
-                .filter(|process| self.marks.pids.contains(&process.pid))
-                .map(|process| (process.pid.clone(), process.name.clone()))
+                .filter(|p| self.marks.pids.contains(&p.pid))
+                .map(|p| (p.pid, p.name.clone()))
                 .collect();
         }
 
@@ -578,14 +567,7 @@ mod tests {
 
     fn snapshot_ports(n: usize) -> Snapshot {
         let ports = (0..n).map(|i| port(8000 + i as u16, "node")).collect();
-        Snapshot {
-            ports,
-            processes: vec![],
-            containers: vec![],
-            docker_error: None,
-            volumes: vec![],
-            stats: empty_stats(),
-        }
+        empty_lists_snapshot(ports)
     }
 
     fn app_with_ports(n: usize) -> App {
@@ -608,14 +590,26 @@ mod tests {
         }
     }
 
-    fn process(pid: u32, name: &str) -> DevProcess {
-        DevProcess {
+    fn process(pid: u32, name: &str) -> Process {
+        Process {
             pid,
             name: name.to_string(),
             cmdline: name.to_string(),
             memory_bytes: 0,
             cpu_usage: 0.0,
             is_dev: true,
+        }
+    }
+
+    fn empty_lists_snapshot(ports: Vec<PortBinding>) -> Snapshot {
+        Snapshot {
+            ports,
+            dev_processes: vec![],
+            regular_processes: vec![],
+            containers: vec![],
+            docker_error: None,
+            volumes: vec![],
+            stats: empty_stats(),
         }
     }
 
@@ -628,7 +622,8 @@ mod tests {
         binding.container_name = Some("redis-dev".to_string());
         app.snapshot = Some(Snapshot {
             ports: vec![binding],
-            processes: vec![process(42, "docker-proxy")],
+            dev_processes: vec![process(42, "docker-proxy")],
+            regular_processes: vec![],
             containers: vec![container("redis-dev", vec![6379])],
             docker_error: None,
             volumes: vec![],
@@ -650,7 +645,8 @@ mod tests {
         binding.pid = Some(100);
         app.snapshot = Some(Snapshot {
             ports: vec![binding],
-            processes: vec![process(99, "other"), process(100, "node")],
+            dev_processes: vec![process(99, "other"), process(100, "node")],
+            regular_processes: vec![],
             containers: vec![],
             docker_error: None,
             volumes: vec![],
@@ -658,7 +654,7 @@ mod tests {
         });
 
         app.jump_from_selected_port();
-        assert_eq!(app.nav.tab, Tab::Processes);
+        assert_eq!(app.nav.tab, Tab::DevProcesses);
         assert_eq!(app.nav.selected_row, 1)
     }
 
@@ -670,7 +666,8 @@ mod tests {
         binding.pid = Some(1503);
         app.snapshot = Some(Snapshot {
             ports: vec![binding],
-            processes: vec![], // DEV list empty / filtered
+            dev_processes: vec![],
+            regular_processes: vec![], // DEV list empty / filtered
             containers: vec![],
             docker_error: None,
             volumes: vec![],
@@ -758,7 +755,8 @@ mod tests {
         let mut app = app_with_ports(0);
         app.snapshot = Some(Snapshot {
             ports: vec![port(8080, "node"), port(3000, "vite"), port(8081, "node")],
-            processes: vec![],
+            dev_processes: vec![],
+            regular_processes: vec![],
             containers: vec![],
             docker_error: None,
             volumes: vec![],
@@ -819,7 +817,8 @@ mod tests {
         let mut app = app_with_ports(0);
         app.snapshot = Some(Snapshot {
             ports: vec![port(8080, "node"), port(8081, "node")],
-            processes: vec![],
+            dev_processes: vec![],
+            regular_processes: vec![],
             containers: vec![],
             docker_error: None,
             volumes: vec![],
@@ -842,7 +841,8 @@ mod tests {
         app.marks.containers.insert("gone".into());
         app.snapshot = Some(Snapshot {
             ports: vec![],
-            processes: vec![],
+            dev_processes: vec![],
+            regular_processes: vec![],
             containers: vec![],
             docker_error: None,
             volumes: vec![],

@@ -68,7 +68,7 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
             let next_tab = match app.nav.tab {
                 Tab::Ports => Tab::DevProcesses,
                 Tab::DevProcesses => Tab::RegularProcesses,
-                Tab::RegularProcesses => Tab::DevProcesses,
+                Tab::RegularProcesses => Tab::Docker,
                 Tab::Docker => Tab::Volumes,
                 Tab::Volumes => Tab::Ports,
             };

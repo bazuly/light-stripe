@@ -8,8 +8,8 @@ use anyhow::Result;
 pub fn collect_snapshot(config: &Config) -> Result<(Snapshot, Option<String>)> {
     let mut ports = ports::collect(None)?;
     ports.retain(|b| !config.ignored_ports.contains(&b.port));
-    let dev_processes = processes::collect_dev_processes(true, &config.extra_dev_markers)?;
-    let regular_processes = processes::collect_regular_processes()?;
+    let (dev_processes, regular_processes) =
+        processes::collect_split(&config.extra_dev_markers)?;
     let stats = system::collect()?;
     let mut volume_warning: Option<String> = None;
     let (containers, docker_error) = match collect_docker(config.docker_host()) {

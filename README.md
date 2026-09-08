@@ -101,12 +101,13 @@ Host memory and CPU. On WSL, totals are for the WSL2 VM, not necessarily the who
 light-stripe tui
 ```
 
-Four tabs:
+Five tabs:
 
 1. **Ports** — who owns the port; `Enter` / `g` jumps to process or container  
-2. **Processes** — mark rows, `x` to kill (confirm)  
-3. **Docker** — mark rows; stop / restart / remove  
-4. **Volumes** — size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (confirm)
+2. **Dev Processes** — marked as "dev" (node, cargo, …); mark rows, `x` to kill (confirm)  
+3. **All Processes** — everything else on the machine; same marks / kill  
+4. **Docker** — mark rows; stop / restart / remove  
+5. **Volumes** — size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (confirm)
 
 Data refreshes on a timer (`refresh_secs` in config, default 3s). Press `r` to refresh now. Collection runs off the UI thread.
 
@@ -120,7 +121,7 @@ Data refreshes on a timer (`refresh_secs` in config, default 3s). Press `r` to r
 |-----|--------|
 | `q` / `Esc` | Quit (`Esc` cancels a confirm prompt) |
 | `r` | Refresh |
-| `1`–`4` | Tabs |
+| `1`–`5` | Tabs |
 | `Tab` | Cycle tabs |
 | `↑` `↓` / `k` `j` | Move |
 | `PgUp` / `PgDn` | Page |

@@ -6,6 +6,7 @@ pub enum Protocol {
     Tcp,
     Udp,
 }
+
 #[derive(Serialize, Clone)]
 pub struct PortBinding {
     pub port: u16,
@@ -17,8 +18,9 @@ pub struct PortBinding {
     pub container_image: Option<String>,
 }
 
+/// Local process row (dev tab and "all processes" tab share this type).
 #[derive(Serialize, Clone)]
-pub struct DevProcess {
+pub struct Process {
     pub pid: u32,
     pub name: String,
     pub cmdline: String,
@@ -27,16 +29,10 @@ pub struct DevProcess {
     pub is_dev: bool,
 }
 
-#[derive(Serialize, Clone)]
-pub struct RegularProcess {
-    pub pid: u32,
-    pub name: String,
-    pub cmdline: String,
-    pub memory_bytes: u64,
-    pub cpu_usage: f32,
-}
+/// Back-compat alias used by CLI output helpers.
+pub type DevProcess = Process;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct SystemStats {
     pub total_memory: u64,
     pub used_memory: u64,
@@ -62,21 +58,20 @@ pub struct DockerVolume {
     pub driver: String,
     pub size_bytes: Option<u64>,
     pub in_use: bool,
-    /// Container names that mount this volume. One to one
+    /// Container names that mount this volume.
     pub container_names: Vec<String>,
 }
 
 pub struct Snapshot {
     pub ports: Vec<PortBinding>,
-    pub dev_processes: Vec<DevProcess>,
-    pub regular_processes: Vec<RegularProcess>,
+    pub dev_processes: Vec<Process>,
+    pub regular_processes: Vec<Process>,
     pub containers: Vec<DockerContainer>,
     pub docker_error: Option<String>,
     pub volumes: Vec<DockerVolume>,
     pub stats: SystemStats,
 }
 
-// leave for future tests
 #[allow(dead_code)]
 impl Snapshot {
     pub fn empty(stats: SystemStats) -> Self {

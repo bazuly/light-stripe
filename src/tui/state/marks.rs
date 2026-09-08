@@ -30,8 +30,7 @@ impl Marks {
     pub fn clear(&mut self, tab: Tab) {
         match tab {
             Tab::Docker => self.containers.clear(),
-            Tab::DevProcesses => self.pids.clear(),
-            Tab::RegularProcesses => self.pids.clear(),
+            Tab::DevProcesses | Tab::RegularProcesses => self.pids.clear(),
             Tab::Ports => {}
             Tab::Volumes => self.volumes.clear(),
         }
@@ -64,8 +63,8 @@ impl Marks {
     ) {
         self.containers
             .retain(|id| alive_containers.contains(id.as_str()));
-        self.pids.retain(|pid| alive_dev_pids.contains(pid));
-        self.pids.retain(|pid| alive_regular_pids.contains(pid));
+        self.pids
+            .retain(|pid| alive_dev_pids.contains(pid) || alive_regular_pids.contains(pid));
         self.volumes
             .retain(|name| alive_volumes.contains(name.as_str()));
     }
