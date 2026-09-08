@@ -122,3 +122,106 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::models::{Process, Snapshot, SystemStats};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn empty_stats() -> SystemStats {
+        SystemStats {
+            total_memory: 0,
+            used_memory: 0,
+            global_cpu_usage: 0.0,
+            cpu_temp_c: None,
+            gpu_temp_c: None,
+        }
+    }
+
+    fn process(pid: u32, name: &str) -> Process {
+        Process {
+            pid,
+            name: name.to_string(),
+            cmdline: name.to_string(),
+            memory_bytes: 0,
+            cpu_usage: 0.0,
+            is_dev: false,
+        }
+    }
+
+    fn app_with_processes() -> App {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(Snapshot {
+            ports: vec![],
+            dev_processes: vec![process(1, "node")],
+            regular_processes: vec![process(2, "zsh"), process(3, "sleep")],
+            containers: vec![],
+            docker_error: None,
+            volumes: vec![],
+            stats: empty_stats(),
+        });
+        app
+    }
+
+    #[test]
+    fn digit_keys_select_all_five_tabs() {
+        let mut app = app_with_processes();
+        handle_key(&mut app, key(KeyCode::Char('3')));
+        assert_eq!(app.nav.tab, Tab::RegularProcesses);
+        handle_key(&mut app, key(KeyCode::Char('2')));
+        assert_eq!(app.nav.tab, Tab::DevProcesses);
+        handle_key(&mut app, key(KeyCode::Char('5')));
+        assert_eq!(app.nav.tab, Tab::Volumes);
+        handle_key(&mut app, key(KeyCode::Char('1')));
+        assert_eq!(app.nav.tab, Tab::Ports);
+        handle_key(&mut app, key(KeyCode::Char('4')));
+        assert_eq!(app.nav.tab, Tab::Docker);
+    }
+
+    #[test]
+    fn tab_cycles_through_regular_processes() {
+        let mut app = app_with_processes();
+        assert_eq!(app.nav.tab, Tab::Ports);
+
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.nav.tab, Tab::DevProcesses);
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.nav.tab, Tab::RegularProcesses);
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.nav.tab, Tab::Docker);
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.nav.tab, Tab::Volumes);
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert_eq!(app.nav.tab, Tab::Ports);
+    }
+
+    #[test]
+    fn x_requests_kill_on_regular_processes_tab() {
+        let mut app = app_with_processes();
+        app.nav.tab = Tab::RegularProcesses;
+        app.nav.select_row(1);
+
+        handle_key(&mut app, key(KeyCode::Char('x')));
+
+        match &app.input_mode {
+            InputMode::ConfirmProcessRemove { targets } => {
+                assert_eq!(targets, &[(3, "sleep".to_string())]);
+            }
+            other => panic!("expected confirm kill, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn x_ignored_on_ports_tab() {
+        let mut app = app_with_processes();
+        app.nav.tab = Tab::Ports;
+        handle_key(&mut app, key(KeyCode::Char('x')));
+        assert_eq!(app.input_mode, InputMode::Normal);
+    }
+}

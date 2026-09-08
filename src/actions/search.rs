@@ -289,6 +289,36 @@ mod tests {
     }
 
     #[test]
+    fn regular_processes_match_by_pid() {
+        let app = app_with(
+            Tab::RegularProcesses,
+            snapshot(
+                vec![],
+                vec![],
+                vec![process(4242, "zsh", "/bin/zsh")],
+                vec![],
+            ),
+            "4242",
+        );
+        assert_eq!(find_matches(&app), vec![0]);
+    }
+
+    #[test]
+    fn dev_search_ignores_regular_list() {
+        let app = app_with(
+            Tab::DevProcesses,
+            snapshot(
+                vec![],
+                vec![process(1, "node", "node app.js")],
+                vec![process(2, "worker", "worker --token")],
+                vec![],
+            ),
+            "worker",
+        );
+        assert!(find_matches(&app).is_empty());
+    }
+
+    #[test]
     fn docker_match_by_name_images_status_port() {
         let app = app_with(
             Tab::Docker,

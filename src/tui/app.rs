@@ -851,4 +851,174 @@ mod tests {
         app.prune_marks_after_refresh();
         assert!(app.marks.containers.is_empty())
     }
+
+    fn process_snapshot(dev: Vec<Process>, regular: Vec<Process>) -> Snapshot {
+        Snapshot {
+            ports: vec![],
+            dev_processes: dev,
+            regular_processes: regular,
+            containers: vec![],
+            docker_error: None,
+            volumes: vec![],
+            stats: empty_stats(),
+        }
+    }
+
+    #[test]
+    fn active_list_len_uses_regular_processes_on_that_tab() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![process(1, "node")],
+            vec![process(2, "zsh"), process(3, "sleep")],
+        ));
+        app.nav.tab = Tab::RegularProcesses;
+        assert_eq!(app.active_list_len(), 2);
+        app.nav.tab = Tab::DevProcesses;
+        assert_eq!(app.active_list_len(), 1);
+    }
+
+    #[test]
+    fn selected_process_reads_from_active_process_tab() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![process(10, "node")],
+            vec![process(20, "zsh"), process(30, "sleep")],
+        ));
+
+        app.nav.tab = Tab::DevProcesses;
+        assert_eq!(app.selected_process().map(|p| p.pid), Some(10));
+
+        app.nav.tab = Tab::RegularProcesses;
+        app.nav.select_row(1);
+        assert_eq!(app.selected_process().map(|p| p.pid), Some(30));
+
+        app.nav.tab = Tab::Ports;
+        assert!(app.selected_process().is_none());
+    }
+
+    #[test]
+    fn mark_all_on_regular_tab_only_marks_regular_pids() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![process(10, "node")],
+            vec![process(20, "zsh"), process(30, "sleep")],
+        ));
+        app.nav.tab = Tab::RegularProcesses;
+        app.mark_all();
+        assert_eq!(app.marks.pids, HashSet::from([20, 30]));
+    }
+
+    #[test]
+    fn mark_all_on_dev_tab_only_marks_dev_pids() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![process(10, "node"), process(11, "cargo")],
+            vec![process(20, "zsh")],
+        ));
+        app.nav.tab = Tab::DevProcesses;
+        app.mark_all();
+        assert_eq!(app.marks.pids, HashSet::from([10, 11]));
+    }
+
+    #[test]
+    fn toggle_mark_current_on_regular_processes() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![],
+            vec![process(20, "zsh"), process(30, "sleep")],
+        ));
+        app.nav.tab = Tab::RegularProcesses;
+        app.nav.select_row(1);
+        app.toggle_mark_current();
+        assert!(app.marks.pids.contains(&30));
+        app.toggle_mark_current();
+        assert!(!app.marks.pids.contains(&30));
+    }
+
+    #[test]
+    fn request_kill_uses_selected_regular_process() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![process(10, "node")],
+            vec![process(20, "zsh"), process(30, "sleep")],
+        ));
+        app.nav.tab = Tab::RegularProcesses;
+        app.nav.select_row(0);
+        app.request_kill_selected_process();
+
+        match &app.input_mode {
+            InputMode::ConfirmProcessRemove { targets } => {
+                assert_eq!(targets, &[(20, "zsh".to_string())]);
+            }
+            other => panic!("expected confirm, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn request_kill_prefers_marked_pids_on_current_tab() {
+        let mut app = App::new(Config::default());
+        app.snapshot = Some(process_snapshot(
+            vec![],
+            vec![process(20, "zsh"), process(30, "sleep"), process(40, "top")],
+        ));
+        app.nav.tab = Tab::RegularProcesses;
+        app.marks.pids.extend([30, 40, 999]); // 999 not in list
+        app.request_kill_selected_process();
+
+        match &app.input_mode {
+            InputMode::ConfirmProcessRemove { targets } => {
+                let pids: HashSet<u32> = targets.iter().map(|(pid, _)| *pid).collect();
+                assert_eq!(pids, HashSet::from([30, 40]));
+            }
+            other => panic!("expected confirm, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prune_keeps_marks_present_in_regular_processes() {
+        let mut app = App::new(Config::default());
+        app.marks.pids.extend([10, 20, 30]);
+        app.snapshot = Some(process_snapshot(
+            vec![process(10, "node")],
+            vec![process(20, "zsh")],
+        ));
+        app.prune_marks_after_refresh();
+        assert_eq!(app.marks.pids, HashSet::from([10, 20]));
+    }
+
+    #[test]
+    fn unmark_all_clears_pids_on_regular_tab() {
+        let mut app = App::new(Config::default());
+        app.nav.tab = Tab::RegularProcesses;
+        app.marks.pids.insert(20);
+        app.marks.containers.insert("c".into());
+        app.unmark_all();
+        assert!(app.marks.pids.is_empty());
+        assert!(app.marks.containers.contains("c"));
+    }
+
+    #[test]
+    fn jump_still_reports_when_pid_only_in_regular_list() {
+        let mut app = App::new(Config::default());
+        app.nav.tab = Tab::Ports;
+        let mut binding = port(5353, "mDNSResponder");
+        binding.pid = Some(1503);
+        app.snapshot = Some(Snapshot {
+            ports: vec![binding],
+            dev_processes: vec![],
+            regular_processes: vec![process(1503, "mDNSResponder")],
+            containers: vec![],
+            docker_error: None,
+            volumes: vec![],
+            stats: empty_stats(),
+        });
+        app.jump_from_selected_port();
+        assert_eq!(app.nav.tab, Tab::Ports);
+        assert!(
+            app.status_message
+                .as_deref()
+                .unwrap()
+                .contains("not in DEV Processes")
+        );
+    }
 }

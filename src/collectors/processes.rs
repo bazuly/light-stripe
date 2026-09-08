@@ -184,4 +184,26 @@ mod tests {
     fn format_cmdline_empty() {
         assert_eq!(format_cmdline(&[]), "");
     }
+
+    #[test]
+    fn is_dev_is_case_insensitive() {
+        assert!(is_dev_process("NODE", "NODE Server.JS", &[]));
+        assert!(is_dev_process("Cargo", "CARGO RUN", &[]));
+    }
+
+    #[test]
+    fn detects_path_style_rust_and_go_markers() {
+        assert!(is_dev_process(
+            "mybin",
+            "/Users/me/proj/target/debug/mybin",
+            &[]
+        ));
+        assert!(is_dev_process("go", "go run ./cmd/api", &[]));
+    }
+
+    #[test]
+    fn docker_related_names_count_as_dev() {
+        assert!(is_dev_process("com.docker.backend", "docker desktop", &[]));
+        assert!(is_dev_process("compose", "docker compose up", &[]));
+    }
 }

@@ -69,3 +69,75 @@ impl Marks {
             .retain(|name| alive_volumes.contains(name.as_str()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn toggle_pid_adds_and_removes() {
+        let mut marks = Marks::default();
+        marks.toggle_pid(10);
+        assert!(marks.pids.contains(&10));
+        marks.toggle_pid(10);
+        assert!(!marks.pids.contains(&10));
+    }
+
+    #[test]
+    fn clear_pids_on_either_process_tab() {
+        let mut marks = Marks::default();
+        marks.pids.insert(1);
+        marks.containers.insert("c".into());
+
+        marks.clear(Tab::DevProcesses);
+        assert!(marks.pids.is_empty());
+        assert!(marks.containers.contains("c"));
+
+        marks.pids.insert(2);
+        marks.clear(Tab::RegularProcesses);
+        assert!(marks.pids.is_empty());
+        assert!(marks.containers.contains("c"));
+    }
+
+    #[test]
+    fn clear_ports_is_noop() {
+        let mut marks = Marks::default();
+        marks.pids.insert(1);
+        marks.clear(Tab::Ports);
+        assert!(marks.pids.contains(&1));
+    }
+
+    #[test]
+    fn prune_keeps_pid_alive_in_dev_or_regular() {
+        let mut marks = Marks::default();
+        marks.pids.extend([1, 2, 3]);
+
+        marks.prune(
+            HashSet::new(),
+            HashSet::from([1]),
+            HashSet::from([2]),
+            HashSet::new(),
+        );
+
+        assert_eq!(marks.pids, HashSet::from([1, 2]));
+    }
+
+    #[test]
+    fn prune_drops_pid_missing_from_both_lists() {
+        let mut marks = Marks::default();
+        marks.pids.insert(99);
+
+        marks.prune(HashSet::new(), HashSet::from([1]), HashSet::from([2]), HashSet::new());
+
+        assert!(marks.pids.is_empty());
+    }
+
+    #[test]
+    fn mark_all_pids_replaces_set() {
+        let mut marks = Marks::default();
+        marks.pids.insert(1);
+        marks.mark_all_pids([7, 8]);
+        assert_eq!(marks.pids, HashSet::from([7, 8]));
+    }
+}
