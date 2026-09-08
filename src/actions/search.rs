@@ -1,4 +1,4 @@
-use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding};
+use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, RegularProcess};
 use crate::output::table::format_port_owner;
 use crate::tui::app::{App, Tab};
 
@@ -21,13 +21,21 @@ pub fn find_matches(app: &App) -> Vec<usize> {
             .filter(|(_, binding)| port_matches(binding, &query))
             .map(|(index, _)| index)
             .collect(),
-        Tab::Processes => snapshot
-            .processes
+        Tab::DevProcesses => snapshot
+            .dev_processes
             .iter()
             .enumerate()
-            .filter(|(_, process)| process_matches(process, &query))
+            .filter(|(_, process)| dev_process_matches(process, &query))
             .map(|(index, _)| index)
             .collect(),
+        Tab::RegularProcesses => snapshot
+            .regular_processes
+            .iter()
+            .enumerate()
+            .filter(|(_, process)| regular_process_matches(process, &query))
+            .map(|(index, _)| index)
+            .collect(),
+
         Tab::Docker => snapshot
             .containers
             .iter()
@@ -55,7 +63,14 @@ fn port_matches(binding: &PortBinding, query: &str) -> bool {
             .unwrap_or(false)
 }
 
-fn process_matches(process: &DevProcess, query: &str) -> bool {
+// TODO: DRY
+fn dev_process_matches(process: &DevProcess, query: &str) -> bool {
+    process.pid.to_string().contains(query)
+        || process.name.to_ascii_lowercase().contains(query)
+        || process.cmdline.to_ascii_lowercase().contains(query)
+}
+
+fn regular_process_matches(process: &RegularProcess, query: &str) -> bool {
     process.pid.to_string().contains(query)
         || process.name.to_ascii_lowercase().contains(query)
         || process.cmdline.to_ascii_lowercase().contains(query)
@@ -160,12 +175,14 @@ mod tests {
 
     fn snapshot(
         ports: Vec<PortBinding>,
-        processes: Vec<DevProcess>,
+        dev_processes: Vec<DevProcess>,
+        regular_processes: Vec<RegularProcess>,
         containers: Vec<DockerContainer>,
     ) -> Snapshot {
         Snapshot {
             ports,
-            processes,
+            dev_processes,
+            regular_processes,
             containers,
             docker_error: None,
             volumes: vec![],
@@ -179,6 +196,7 @@ mod tests {
             Tab::Ports,
             snapshot(
                 vec![port(8080, "127.0.0.1", Some(1), Some("node"), None)],
+                vec![],
                 vec![],
                 vec![],
             ),
@@ -205,6 +223,7 @@ mod tests {
                 ],
                 vec![],
                 vec![],
+                vec![],
             ),
             "8080",
         );
@@ -217,6 +236,7 @@ mod tests {
             Tab::Ports,
             snapshot(
                 vec![port(3000, "127.0.0.1", Some(9), Some("vite"), None)],
+                vec![],
                 vec![],
                 vec![],
             ),
@@ -234,6 +254,7 @@ mod tests {
                 vec![port(6379, "0.0.0.0", None, None, Some("redis-dev"))],
                 vec![],
                 vec![],
+                vec![],
             ),
             "redis",
         );
@@ -243,13 +264,14 @@ mod tests {
     #[test]
     fn processes_match_name_and_cmdline_case_insensitive() {
         let app = app_with(
-            Tab::Processes,
+            Tab::DevProcesses,
             snapshot(
                 vec![],
                 vec![
                     process(10, "bash", "/bin/bash"),
                     process(20, "node", "node /app/Server.js"),
                 ],
+                vec![],
                 vec![],
             ),
             "SERVER",
@@ -262,6 +284,7 @@ mod tests {
         let app = app_with(
             Tab::Docker,
             snapshot(
+                vec![],
                 vec![],
                 vec![],
                 vec![
@@ -278,10 +301,11 @@ mod tests {
     #[test]
     fn only_active_tab_is_searched() {
         let app = app_with(
-            Tab::Processes,
+            Tab::DevProcesses,
             snapshot(
                 vec![port(8080, "127.0.0.1", Some(1), Some("node"), None)],
                 vec![process(1, "cargo", "cargo run")],
+                vec![],
                 vec![],
             ),
             "8080",

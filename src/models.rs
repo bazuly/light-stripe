@@ -27,6 +27,15 @@ pub struct DevProcess {
     pub is_dev: bool,
 }
 
+#[derive(Serialize, Clone)]
+pub struct RegularProcess {
+    pub pid: u32,
+    pub name: String,
+    pub cmdline: String,
+    pub memory_bytes: u64,
+    pub cpu_usage: f32,
+}
+
 #[derive(Serialize)]
 pub struct SystemStats {
     pub total_memory: u64,
@@ -59,7 +68,8 @@ pub struct DockerVolume {
 
 pub struct Snapshot {
     pub ports: Vec<PortBinding>,
-    pub processes: Vec<DevProcess>,
+    pub dev_processes: Vec<DevProcess>,
+    pub regular_processes: Vec<RegularProcess>,
     pub containers: Vec<DockerContainer>,
     pub docker_error: Option<String>,
     pub volumes: Vec<DockerVolume>,
@@ -72,7 +82,8 @@ impl Snapshot {
     pub fn empty(stats: SystemStats) -> Self {
         Self {
             ports: Vec::new(),
-            processes: Vec::new(),
+            dev_processes: Vec::new(),
+            regular_processes: Vec::new(),
             containers: Vec::new(),
             docker_error: None,
             volumes: Vec::new(),

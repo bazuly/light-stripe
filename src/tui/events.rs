@@ -19,10 +19,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_confirm_key(app: &mut App, key: KeyEvent) {
+    let tab = app.nav.tab;
     match key.code {
         KeyCode::Char('y') | KeyCode::Char('Y') => match &app.input_mode {
             InputMode::ConfirmDockerRemove { .. } => app.confirm_docker_remove(),
-            InputMode::ConfirmProcessRemove { .. } => app.confirm_kill_selected_process(),
+            InputMode::ConfirmProcessRemove { .. } => app.confirm_kill_selected_process(tab),
             InputMode::ConfirmVolumeRemove { .. } => app.confirm_volume_remove(),
             _ => {}
         },
@@ -58,14 +59,16 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('r') | KeyCode::Char('R') => app.needs_refresh = true,
 
         KeyCode::Char('1') => app.set_tab(Tab::Ports),
-        KeyCode::Char('2') => app.set_tab(Tab::Processes),
-        KeyCode::Char('3') => app.set_tab(Tab::Docker),
-        KeyCode::Char('4') => app.set_tab(Tab::Volumes),
+        KeyCode::Char('2') => app.set_tab(Tab::DevProcesses),
+        KeyCode::Char('3') => app.set_tab(Tab::RegularProcesses),
+        KeyCode::Char('4') => app.set_tab(Tab::Docker),
+        KeyCode::Char('5') => app.set_tab(Tab::Volumes),
 
         KeyCode::Tab => {
             let next_tab = match app.nav.tab {
-                Tab::Ports => Tab::Processes,
-                Tab::Processes => Tab::Docker,
+                Tab::Ports => Tab::DevProcesses,
+                Tab::DevProcesses => Tab::RegularProcesses,
+                Tab::RegularProcesses => Tab::DevProcesses,
                 Tab::Docker => Tab::Volumes,
                 Tab::Volumes => Tab::Ports,
             };
@@ -90,7 +93,9 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
             }
         }
 
-        KeyCode::Char('x') | KeyCode::Char('X') if app.nav.tab == Tab::Processes => {
+        KeyCode::Char('x') | KeyCode::Char('X')
+            if app.nav.tab == Tab::DevProcesses || app.nav.tab == Tab::RegularProcesses =>
+        {
             app.request_kill_selected_process();
         }
 

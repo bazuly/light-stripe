@@ -1,6 +1,8 @@
 use crate::actions::search;
 use crate::config::Config;
-use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, Snapshot};
+use crate::models::{
+    DevProcess, DockerContainer, DockerVolume, PortBinding, RegularProcess, Snapshot,
+};
 use crate::tui::collector_worker::ToWorker;
 use crate::tui::state::marks::Marks;
 use crate::tui::state::nav::Navigation;
@@ -58,6 +60,10 @@ impl App {
         self.clear_status();
     }
 
+    pub fn current_tab(&self) -> Tab {
+        self.nav.tab
+    }
+
     pub fn apply_snapshot(&mut self, snapshot: Snapshot, warning: Option<String>) {
         self.snapshot = Some(snapshot);
         self.last_error = None;
@@ -82,7 +88,8 @@ impl App {
 
         match self.nav.tab {
             Tab::Ports => snapshot.ports.len(),
-            Tab::Processes => snapshot.processes.len(),
+            Tab::DevProcesses => snapshot.dev_processes.len(),
+            Tab::RegularProcesses => snapshot.regular_processes.len(),
             Tab::Docker => snapshot.containers.len(),
             Tab::Volumes => snapshot.volumes.len(),
         }
@@ -103,8 +110,16 @@ impl App {
                 self.marks.toggle_container(id);
             }
 
-            Tab::Processes => {
-                let Some(c) = self.selected_process() else {
+            Tab::DevProcesses => {
+                let Some(c) = self.selected_dev_process() else {
+                    return;
+                };
+                let pid = c.pid;
+                self.marks.toggle_pid(pid);
+            }
+
+            Tab::RegularProcesses => {
+                let Some(c) = self.selected_regular_process() else {
                     return;
                 };
                 let pid = c.pid;
@@ -132,9 +147,13 @@ impl App {
                 self.marks
                     .mark_all_containers(snapshot.containers.iter().map(|c| c.id.clone()));
             }
-            Tab::Processes => {
+            Tab::DevProcesses => {
                 self.marks
-                    .mark_all_pids(snapshot.processes.iter().map(|p| p.pid));
+                    .mark_all_pids(snapshot.dev_processes.iter().map(|p| p.pid));
+            }
+            Tab::RegularProcesses => {
+                self.marks
+                    .mark_all_pids(snapshot.regular_processes.iter().map(|p| p.pid));
             }
             Tab::Volumes => {
                 self.marks
@@ -157,12 +176,18 @@ impl App {
 
         let alive_containers: HashSet<&str> =
             snapshot.containers.iter().map(|c| c.id.as_str()).collect();
-        let alive_pids: HashSet<u32> = snapshot.processes.iter().map(|p| p.pid).collect();
+        let alive_dev_pids: HashSet<u32> = snapshot.dev_processes.iter().map(|p| p.pid).collect();
+        let alive_regular_pids: HashSet<u32> =
+            snapshot.regular_processes.iter().map(|p| p.pid).collect();
         let alive_volumes: HashSet<&str> =
             snapshot.volumes.iter().map(|v| v.name.as_str()).collect();
 
-        self.marks
-            .prune(alive_containers, alive_pids, alive_volumes);
+        self.marks.prune(
+            alive_containers,
+            alive_dev_pids,
+            alive_regular_pids,
+            alive_volumes,
+        );
     }
 
     pub fn clamp_selection_after_refresh(&mut self) {
@@ -225,12 +250,20 @@ impl App {
         self.status_message = None;
     }
 
-    pub fn selected_process(&self) -> Option<&DevProcess> {
-        if self.nav.tab != Tab::Processes {
+    pub fn selected_dev_process(&self) -> Option<&DevProcess> {
+        if self.nav.tab != Tab::DevProcesses {
             return None;
         }
         let snapshot = self.snapshot.as_ref()?;
-        snapshot.processes.get(self.nav.selected_row)
+        snapshot.dev_processes.get(self.nav.selected_row)
+    }
+
+    pub fn selected_regular_process(&self) -> Option<&RegularProcess> {
+        if self.nav.tab != Tab::RegularProcesses {
+            return None;
+        }
+        let snapshot = self.snapshot.as_ref()?;
+        snapshot.regular_processes.get(self.nav.selected_row)
     }
 
     pub fn selected_container(&self) -> Option<&DockerContainer> {
@@ -300,8 +333,7 @@ impl App {
         self.input_mode = InputMode::ConfirmProcessRemove { targets };
     }
 
-    pub fn confirm_kill_selected_process(&mut self) {
-        let tab = Tab::Processes;
+    pub fn confirm_kill_selected_process(&mut self, tab: Tab) {
         let InputMode::ConfirmProcessRemove { targets } = self.input_mode.clone() else {
             return;
         };
@@ -417,7 +449,7 @@ impl App {
         };
 
         if let Some(pid) = binding.pid {
-            if self.jump_to_process_by_pid(pid) {
+            if self.jump_to_dev_process_by_pid(pid) {
                 let label = binding.process_name.as_deref().unwrap_or("process");
                 self.set_status(format!("jumped to {label} (pid: {pid})"));
                 return;
@@ -444,15 +476,15 @@ impl App {
         true
     }
 
-    fn jump_to_process_by_pid(&mut self, pid: u32) -> bool {
+    fn jump_to_dev_process_by_pid(&mut self, pid: u32) -> bool {
         let Some(index) = self
             .snapshot
             .as_ref()
-            .and_then(|s| s.processes.iter().position(|p| p.pid == pid))
+            .and_then(|s| s.dev_processes.iter().position(|p| p.pid == pid))
         else {
             return false;
         };
-        self.set_tab(Tab::Processes);
+        self.set_tab(Tab::DevProcesses);
         self.nav.select_row(index);
         true
     }

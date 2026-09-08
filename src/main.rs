@@ -37,7 +37,10 @@ fn main() -> Result<()> {
         }
 
         Command::Ps(args) => {
-            let processes = collectors::processes::collect(args.dev_only, &cfg.extra_dev_markers)?;
+            let processes = collectors::processes::collect_dev_processes(
+                args.dev_only,
+                &cfg.extra_dev_markers,
+            )?;
 
             match args.format {
                 OutputFormat::Table => output::table::print_processes(&processes),

@@ -3,7 +3,8 @@ use ratatui::widgets::TableState;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
     Ports,
-    Processes,
+    DevProcesses,
+    RegularProcesses,
     Docker,
     Volumes,
 }

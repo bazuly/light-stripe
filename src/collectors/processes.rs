@@ -1,10 +1,13 @@
-use crate::models::DevProcess;
+use crate::models::{DevProcess, RegularProcess};
 use anyhow::Result;
 use std::ffi::OsString;
 use std::thread;
 use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, ProcessRefreshKind, ProcessesToUpdate, System};
 
-pub fn collect(dev_only: bool, extra_dev_markers: &[String]) -> Result<Vec<DevProcess>> {
+pub fn collect_dev_processes(
+    dev_only: bool,
+    extra_dev_markers: &[String],
+) -> Result<Vec<DevProcess>> {
     let mut system = System::new();
 
     system.refresh_all();
@@ -16,7 +19,7 @@ pub fn collect(dev_only: bool, extra_dev_markers: &[String]) -> Result<Vec<DevPr
         ProcessRefreshKind::nothing().with_cpu(),
     );
 
-    let mut processes: Vec<DevProcess> = Vec::new();
+    let mut dev_processes: Vec<DevProcess> = Vec::new();
 
     for process in system.processes().values() {
         let name: String = process.name().to_string_lossy().into_owned();
@@ -37,7 +40,7 @@ pub fn collect(dev_only: bool, extra_dev_markers: &[String]) -> Result<Vec<DevPr
         let memory_bytes: u64 = process.memory();
         let cpu_usage: f32 = process.cpu_usage();
 
-        processes.push(DevProcess {
+        dev_processes.push(DevProcess {
             pid,
             name,
             cmdline,
@@ -46,8 +49,47 @@ pub fn collect(dev_only: bool, extra_dev_markers: &[String]) -> Result<Vec<DevPr
             is_dev,
         });
     }
-    processes.sort_by(|left, right| right.memory_bytes.cmp(&left.memory_bytes));
-    Ok(processes)
+    dev_processes.sort_by(|left, right| right.memory_bytes.cmp(&left.memory_bytes));
+    Ok(dev_processes)
+}
+
+pub fn collect_regular_processes() -> Result<Vec<RegularProcess>> {
+    let mut system = System::new();
+
+    system.refresh_all();
+
+    thread::sleep(MINIMUM_CPU_UPDATE_INTERVAL);
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cpu(),
+    );
+
+    let mut regular_processes: Vec<RegularProcess> = Vec::new();
+
+    for process in system.processes().values() {
+        let name: String = process.name().to_string_lossy().into_owned();
+
+        let mut cmdline: String = format_cmdline(process.cmd());
+
+        if cmdline.is_empty() {
+            cmdline = name.clone();
+        }
+
+        let pid: u32 = process.pid().as_u32();
+        let memory_bytes: u64 = process.memory();
+        let cpu_usage: f32 = process.cpu_usage();
+
+        regular_processes.push(RegularProcess {
+            pid,
+            name,
+            cmdline,
+            memory_bytes,
+            cpu_usage,
+        });
+    }
+    regular_processes.sort_by(|left, right| right.memory_bytes.cmp(&left.memory_bytes));
+    Ok(regular_processes)
 }
 
 ///   ["node", "/path/vite"] → "node /path/vite"
