@@ -1,6 +1,6 @@
 use crate::actions::search;
 use crate::config::Config;
-use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, SystemStats};
+use crate::models::{DevProcess, DockerContainer, DockerVolume, PortBinding, Snapshot};
 use crate::tui::collector_worker::ToWorker;
 use crate::tui::state::marks::Marks;
 use crate::tui::state::nav::Navigation;
@@ -10,19 +10,19 @@ use std::collections::HashSet;
 
 pub use crate::tui::state::nav::Tab;
 
-pub struct Snapshot {
-    pub ports: Vec<PortBinding>,
-    pub processes: Vec<DevProcess>,
-    pub containers: Vec<DockerContainer>,
-    pub docker_error: Option<String>,
-    pub volumes: Vec<DockerVolume>,
-    pub stats: SystemStats,
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum InputMode {
+    Normal,
+    Search,
+    ConfirmDockerRemove { targets: Vec<(String, String)> }, // id, name
+    ConfirmProcessRemove { targets: Vec<(u32, String)> },   // pid, name
+    ConfirmVolumeRemove { targets: Vec<String> },
 }
 
 // TUI app state
 pub struct App {
     pub config: Config,
-    pub snapshot: Option<Snapshot>, // None before first refresh
+    pub snapshot: Option<Snapshot>,
     pub nav: Navigation,
     pub should_quit: bool,
     pub needs_refresh: bool,
@@ -32,15 +32,6 @@ pub struct App {
     pub status_message: Option<String>,
     pub marks: Marks,
     pub to_worker: WorkerClient,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum InputMode {
-    Normal,
-    Search,
-    ConfirmDockerRemove { targets: Vec<(String, String)> }, // id, name
-    ConfirmProcessRemove { targets: Vec<(u32, String)> },   // pid, name
-    ConfirmVolumeRemove { targets: Vec<String> },
 }
 
 impl App {
@@ -529,7 +520,7 @@ impl App {
 mod tests {
 
     use super::*;
-    use crate::models::Protocol;
+    use crate::models::{Protocol, SystemStats};
 
     fn empty_stats() -> SystemStats {
         SystemStats {

@@ -1,6 +1,6 @@
 use crate::collectors::snapshot::collect_snapshot;
 use crate::config::Config;
-use crate::tui::app::Snapshot;
+use crate::models::Snapshot;
 
 use std::sync::mpsc;
 use std::thread;

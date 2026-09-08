@@ -1,7 +1,8 @@
 use crate::collectors::docker::collect as collect_docker;
 use crate::collectors::{enrich, ports, processes, system, volumes};
 use crate::config::Config;
-use crate::tui::app::Snapshot;
+use crate::models::Snapshot;
+
 use anyhow::Result;
 
 pub fn collect_snapshot(config: &Config) -> Result<(Snapshot, Option<String>)> {

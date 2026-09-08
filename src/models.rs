@@ -56,3 +56,27 @@ pub struct DockerVolume {
     /// Container names that mount this volume. One to one
     pub container_names: Vec<String>,
 }
+
+pub struct Snapshot {
+    pub ports: Vec<PortBinding>,
+    pub processes: Vec<DevProcess>,
+    pub containers: Vec<DockerContainer>,
+    pub docker_error: Option<String>,
+    pub volumes: Vec<DockerVolume>,
+    pub stats: SystemStats,
+}
+
+// leave for future tests
+#[allow(dead_code)]
+impl Snapshot {
+    pub fn empty(stats: SystemStats) -> Self {
+        Self {
+            ports: Vec::new(),
+            processes: Vec::new(),
+            containers: Vec::new(),
+            docker_error: None,
+            volumes: Vec::new(),
+            stats,
+        }
+    }
+}

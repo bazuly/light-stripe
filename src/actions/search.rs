@@ -93,8 +93,9 @@ fn format_ports(container: &DockerContainer) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Snapshot;
     use crate::models::{Protocol, SystemStats};
-    use crate::tui::app::{InputMode, Snapshot};
+    use crate::tui::app::InputMode;
 
     fn empty_stats() -> SystemStats {
         SystemStats {
