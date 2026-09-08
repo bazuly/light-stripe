@@ -1,42 +1,41 @@
 # Light Stripe
 
 <p align="center">
-  <img src="assets/light-stripe-concept.png" alt="Light Stripe — a bright stripe through the dark of local-dev chaos" width="820" />
+  <img src="assets/light-stripe-concept.png" alt="Light Stripe" width="820" />
 </p>
 
 <p align="center">
-  <em>A bright stripe through the mess of local development.</em>
+  <em>Ports, processes, and Docker — without the noise.</em>
 </p>
 
-A small Rust tool for the everyday chaos of ports, processes, and Docker.
+Local-dev monitor written in Rust. CLI for scripts, TUI when you want to poke around.
 
-You know the feeling: Redis is up, Postgres is up, three `node` processes are running, something grabbed port `8080`, and `htop` is somehow both too much and not enough. Light Stripe is meant for that moment — a focused look at **ports**, **dev processes**, and **Docker**, plus a simple TUI when you want to poke around interactively.
-
----
-
-## What it does
-
-- Shows which processes (and Docker containers) are listening on which ports
-- Lists “dev-looking” processes with CPU and memory
-- Shows Docker containers with CPU / MEM, and lets you stop / restart / remove them
-- Lists Docker volumes (size, in-use, linked containers) and can delete unused ones
-- Works as a CLI for scripting (`--format json`) or as a live TUI dashboard
-
-Right now it works best on **Linux and WSL**. macOS / Windows are on the radar.
+Works on **Linux, WSL, and macOS**. Docker is optional: without it, ports and processes still work; container-related bits just stay empty.
 
 ---
 
-## Getting started
+## Features
 
-You need a recent Rust toolchain. Docker is optional, but without it you lose container names on ports and the Docker tab.
+- Listening ports with process / Docker owner
+- Dev-looking processes (CPU, memory); kill from the TUI
+- Docker containers (CPU / MEM): stop, restart, remove
+- Docker volumes (size, in use, linked containers); delete unused ones
+- Table or JSON output for scripting
+- Background refresh in the TUI so the UI stays responsive
+
+---
+
+## Build
+
+Needs a recent Rust toolchain.
 
 ```bash
-git clone <your-repo-url> light-stripe
+git clone <repo-url> light-stripe
 cd light-stripe
 cargo build --release
 ```
 
-The binary ends up at `target/release/light-stripe`. For day-to-day hacking, this is fine too:
+Binary: `target/release/light-stripe`.
 
 ```bash
 cargo run -- tui
@@ -44,35 +43,25 @@ cargo run -- tui
 
 ---
 
-## Everyday commands
-
-```bash
-# Open the dashboard
-cargo run -- tui        # same as: cargo run -- ui
-
-# Who is on 8080?
-cargo run -- ports --port 8080
-
-# Only the noisy local-dev stuff
-cargo run -- ps --dev-only
-
-# Quick RAM / CPU snapshot
-cargo run -- stats
-
-# Pipe into jq / scripts
-cargo run -- ports --format json
-cargo run -- ps -d --format json
-```
-
----
-
-## CLI
+## Commands
 
 ```text
-light-stripe tui      Interactive TUI          (alias: ui)
-light-stripe ports    Listening ports          (aliases: p, port)
-light-stripe ps       Processes                (alias: proc)
-light-stripe stats    System RAM / CPU         (aliases: st, sys)
+light-stripe tui      Interactive TUI     (alias: ui)
+light-stripe ports    Listening ports     (aliases: p, port)
+light-stripe ps       Processes           (alias: proc)
+light-stripe stats    Host RAM / CPU      (aliases: st, sys)
+light-stripe config   Config path + values
+```
+
+Examples:
+
+```bash
+cargo run -- tui
+cargo run -- ports -p 8080
+cargo run -- ps -d
+cargo run -- stats
+cargo run -- ports --format json
+cargo run -- config
 ```
 
 ### ports
@@ -83,7 +72,7 @@ light-stripe ports -p 6379
 light-stripe ports --format json
 ```
 
-Each row is a listening socket. The **OWNER** column is the useful bit: either a process name, or something like `redis-dev (docker)` when Docker published that host port.
+OWNER is either a process name or something like `redis-dev (docker)` when Docker published the port.
 
 ### ps
 
@@ -93,7 +82,7 @@ light-stripe ps -d              # --dev-only
 light-stripe ps --format json
 ```
 
-Without `-d` you get a broader process list. With `-d`, Light Stripe tries to keep only things that look like local development (Node, Python, Cargo, local DBs, and similar).
+`-d` keeps things that look like local development (Node, Python, Cargo, local DBs, plus markers from config).
 
 ### stats
 
@@ -102,169 +91,130 @@ light-stripe stats
 light-stripe stats --format json
 ```
 
-Host memory and CPU. On WSL, the total RAM is whatever the WSL2 VM is allowed to use — not always the full Windows machine.
+Host memory and CPU. On WSL, totals are for the WSL2 VM, not necessarily the whole Windows machine.
 
-### tui
+---
+
+## TUI
 
 ```bash
 light-stripe tui
 ```
 
-Full-screen view. Data refreshes about every two seconds (press `r` to refresh now).
-
----
-
-## Using the TUI
-
 Four tabs:
 
-1. **Ports** — who owns a port; `Enter` / `g` jumps to the process or container
-2. **Processes** — local servers / tooling; mark rows, then `x` to kill (with confirm)
-3. **Docker** — containers with CPU / MEM; mark rows, then stop / restart / remove
-4. **Volumes** — Docker volumes with size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (with confirm)
+1. **Ports** — who owns the port; `Enter` / `g` jumps to process or container  
+2. **Processes** — mark rows, `x` to kill (confirm)  
+3. **Docker** — mark rows; stop / restart / remove  
+4. **Volumes** — size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (confirm)
+
+Data refreshes on a timer (`refresh_secs` in config, default 3s). Press `r` to refresh now. Collection runs off the UI thread.
 
 <p align="center">
-  <img src="assets/light-stripe-tui-docker.png" alt="Light Stripe TUI — Docker tab showing containers with CPU and memory usage" width="820" />
+  <img src="assets/light-stripe-tui-docker.png" alt="Light Stripe TUI — Docker tab" width="820" />
 </p>
 
-<p align="center">
-  <em>Docker tab — containers with CPU / MEM and quick actions.</em>
-</p>
+### Keys
 
-### Keys you’ll actually use
-
-| Key | What it does |
-|-----|----------------|
-| `q` / `Esc` | Quit (in a confirm prompt, `Esc` cancels instead) |
+| Key | Action |
+|-----|--------|
+| `q` / `Esc` | Quit (`Esc` cancels a confirm prompt) |
 | `r` | Refresh |
-| `1` `2` `3` `4` | Jump to a tab |
+| `1`–`4` | Tabs |
 | `Tab` | Cycle tabs |
-| `↑` `↓` or `k` `j` | Move around |
-| `PgUp` / `PgDn` | Move by a page |
+| `↑` `↓` / `k` `j` | Move |
+| `PgUp` / `PgDn` | Page |
 | `Home` / `End` | First / last row |
-| `/` | Search and jump to a match |
+| `/` | Search |
 | `n` / `N` | Next / previous match |
-| `Enter` / `g` | Jump: port → process/container; volume → linked container |
-| `Space` | Toggle mark on the current row (Docker / Processes / Volumes; shown as `●` / `○`) |
-| `a` | Mark all rows on the current tab |
-| `A` | Unmark all |
-| `x` | Kill process(es) — confirm with `y`, cancel with `n` / `Esc` (Processes) |
-| `s` | Stop container(s) (Docker) |
-| `S` | Restart container(s) (Docker) |
-| `d` | Remove container(s) or unused volume(s) — confirm with `y`, cancel with `n` / `Esc` |
+| `Enter` / `g` | Jump (port → process/container; volume → container) |
+| `Space` | Toggle mark (`●` / `○`) |
+| `a` / `A` | Mark all / unmark all (current tab) |
+| `x` | Kill process(es) — confirm `y` |
+| `s` / `S` | Stop / restart container(s) |
+| `d` | Remove container(s) or unused volume(s) — confirm `y` |
 
-**Marks:** if any rows are marked, `s` / `S` / `d` / `x` apply to **all marked** rows; otherwise they apply to the highlighted row only. Marks are tracked by container id / pid / volume name, so a refresh does not scramble your selection. In-use volumes are not deleted (no force).
+If anything is marked, actions hit the marks; otherwise the current row. Marks use container id / pid / volume name, so refresh doesn’t scramble them. In-use volumes are not deleted.
 
-Search is intentionally simple: type a query, hit Enter, and the selection jumps to the first hit. It does not hide the rest of the list.
+Search jumps to matches; it doesn’t filter the list away.
 
 ---
 
-## Ports + Docker
+## Docker
 
-If Docker is running, Light Stripe connects the dots for you:
+When Docker is available, published ports show up as container owners, e.g.:
 
 ```text
 6379  →  redis-dev (docker)
 5432  →  postgres-dev (docker)
-8080  →  node
 ```
 
-No Docker socket? Fine. Ports and processes still work; the Docker tab just tells you it couldn’t connect instead of taking the whole app down.
+No socket / daemon? Ports and processes still work. Docker / Volumes tabs show an error instead of taking the app down.
 
-Seeing `::` in the ADDRESS column is normal — it usually means “listening on all interfaces,” which is common for published container ports.
+`::` in ADDRESS usually means “all interfaces” — common for published container ports.
+
+Connection order: config `docker_host` → env `DOCKER_HOST` → auto-detect (Linux socket, Docker Desktop on Mac, etc.).
 
 ---
 
-## Project layout
-
-Nothing fancy:
-
-```text
-collectors/   read from the OS and Docker
-actions/      kill processes, stop/restart/remove containers
-output/       CLI tables and JSON
-tui/          the interactive UI
-config.rs     user settings (TOML)
-models.rs     shared types
-```
-
-Reading and changing things stay separate on purpose. Collectors don’t kill anything; the UI doesn’t talk to Docker directly for stop/remove.
-
-### Config
-
-Settings live in a TOML file under the OS config directory ([`directories`](https://docs.rs/directories) — `ProjectDirs::from("dev", "light-stripe", "light-stripe")`). If the file is missing, built-in defaults apply.
-
-**Find the path on your machine:**
+## Config
 
 ```bash
 light-stripe config
-# or from a clone:
-cargo run -- config
+# or: cargo run -- config
 ```
 
-The command prints the resolved path and effective values. When no file exists you will see `file not found, using defaults`.
+Prints the config path and effective settings. Missing file → built-in defaults.
 
-**Typical config paths:**
-
-| OS | Path |
-|----|------|
+| OS | Typical path |
+|----|----------------|
 | macOS | `~/Library/Application Support/dev.light-stripe.light-stripe/config.toml` |
 | Linux / WSL | `~/.config/light-stripe/config.toml` |
 | Windows | `%APPDATA%\light-stripe\light-stripe\config.toml` |
 
-On Linux or Windows, run `light-stripe config` if your layout differs.
+Copy the example and edit:
 
-**Set up a custom config:**
+```bash
+# macOS
+mkdir -p ~/Library/Application\ Support/dev.light-stripe.light-stripe
+cp config.example.toml ~/Library/Application\ Support/dev.light-stripe.light-stripe/config.toml
+```
 
-1. Copy the example from the repo to the path shown by `light-stripe config`:
+Or pass a file for one run:
 
-   ```bash
-   CONFIG_DIR="$(light-stripe config 2>&1 | sed -n 's/^config path: //p' | xargs dirname)"
-   mkdir -p "$CONFIG_DIR"
-   cp config.example.toml "$CONFIG_DIR/config.toml"
-   ```
+```bash
+light-stripe --config ./config.toml tui
+```
 
-   macOS one-liner (same path as above):
-
-   ```bash
-   mkdir -p ~/Library/Application\ Support/dev.light-stripe.light-stripe
-   cp config.example.toml ~/Library/Application\ Support/dev.light-stripe.light-stripe/config.toml
-   ```
-
-2. Edit `docker_host`, `ignored_ports`, `extra_dev_markers`, `refresh_secs`, etc.
-
-3. **Local override** without installing a user config:
-
-   ```bash
-   light-stripe --config ./config.toml tui
-   cargo run -- --config ./config.toml config
-   ```
-
-**Docker (`docker_host`)**
-
-Light Stripe uses the **local** Docker daemon on the machine where it runs. Usually you can leave `docker_host` unset — it auto-detects common socket paths.
-
-Priority: config `docker_host` → env `DOCKER_HOST` → auto-detect.
-
-If auto-detect fails, set in config:
+Useful keys: `refresh_secs`, `ignored_ports`, `extra_dev_markers`, `docker_host`.
 
 ```toml
 docker_host = "unix:///Users/you/.docker/run/docker.sock"
 ```
 
-(`/Users/you/.docker/run/docker.sock` without the `unix://` prefix also works.) Or export `DOCKER_HOST` when `docker_host` is unset in config.
-
-### Libraries
-
-Built with clap, ratatui, crossterm, sysinfo, netstat2, bollard, comfy-table, serde, toml, and directories.
+Bare path without `unix://` works too.
 
 ---
 
-## Things worth knowing
+## Layout
 
-- Killing processes or talking to Docker needs the usual permissions. If something fails, the footer should say so.
-- Docker CPU % is “share of the host,” same idea as `docker stats` — not “percent of the container’s CPU limit.”
-- Linux / WSL first. Broader platform support comes later.
+```text
+collectors/   OS + Docker reads (incl. full snapshot)
+actions/      kill / stop / restart / remove
+output/       CLI tables + JSON
+tui/          ratatui UI, background worker, state pieces
+models/       shared types (incl. Snapshot)
+config.rs     TOML settings
+```
+
+Collectors don’t change the system; actions do. The TUI talks to Docker through the worker, not from the render loop.
+
+---
+
+## Notes
+
+- Stop / kill / remove need normal OS / Docker permissions; failures show in the footer.
+- Docker CPU % is host share (like `docker stats`), not “percent of the container limit”.
 
 ---
 
