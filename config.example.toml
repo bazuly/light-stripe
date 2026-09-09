@@ -15,6 +15,10 @@ ignored_ports = [53, 323, 5353, 0]
 # Extra "dev process" markers (added to the built-in list)
 # extra_dev_markers = ["webpack-dev-server", "my-legacy-app"]
 
+# Show the All Processes TUI tab (default: true). Set false to hide it;
+# remaining tabs keep dynamic hotkeys 1..N.
+# show_all_processes = false
+
 # Optional Docker endpoint override.
 # Accepts:
 #   unix:///Users/you/.docker/run/docker.sock

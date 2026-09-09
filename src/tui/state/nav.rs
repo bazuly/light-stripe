@@ -1,5 +1,7 @@
 use ratatui::widgets::TableState;
 
+use crate::config::Config;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
     Ports,
@@ -15,6 +17,50 @@ pub struct Navigation {
     pub selected_row: usize,
     pub list_offset: usize,
     pub table_state: TableState,
+}
+
+impl Tab {
+    pub fn title(self) -> &'static str {
+        match self {
+            Tab::Ports => "Ports",
+            Tab::DevProcesses => "Dev Processes",
+            Tab::RegularProcesses => "All Processes",
+            Tab::Docker => "Docker",
+            Tab::Volumes => "Volumes",
+        }
+    }
+}
+
+pub fn visible_tabs(config: &Config) -> Vec<Tab> {
+    let mut tabs = vec![Tab::Ports, Tab::DevProcesses];
+    if config.show_all_processes {
+        tabs.push(Tab::RegularProcesses);
+    }
+    tabs.push(Tab::Docker);
+    tabs.push(Tab::Volumes);
+    tabs
+}
+
+pub fn tab_at_digit(config: &Config, digit: u8) -> Option<Tab> {
+    let index = digit.checked_sub(1)? as usize;
+    visible_tabs(config).into_iter().nth(index)
+}
+
+pub fn next_tab(config: &Config, current: Tab) -> Tab {
+    let tabs = visible_tabs(config);
+    let Some(pos) = tabs.iter().position(|&t| t == current) else {
+        // current hidden (e.g. config flipped) → first visible
+        return tabs[0];
+    };
+    tabs[(pos + 1) % tabs.len()]
+}
+
+#[allow(dead_code)]
+pub fn digit_for_tab(config: &Config, tab: Tab) -> Option<usize> {
+    visible_tabs(config)
+        .into_iter()
+        .position(|t| t == tab)
+        .map(|i| i + 1)
 }
 
 impl Navigation {

@@ -27,6 +27,9 @@ pub struct Config {
 
     #[serde(default)]
     pub docker_host: Option<String>,
+
+    #[serde(default = "default_show_process")]
+    pub show_all_processes: bool,
 }
 
 fn default_refresh_secs() -> u64 {
@@ -37,6 +40,10 @@ fn default_ignored_ports() -> Vec<u16> {
     vec![53, 323, 5353, 0]
 }
 
+fn default_show_process() -> bool {
+    true
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -44,6 +51,7 @@ impl Default for Config {
             ignored_ports: default_ignored_ports(),
             extra_dev_markers: Vec::new(),
             docker_host: None,
+            show_all_processes: true,
         }
     }
 }

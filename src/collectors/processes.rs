@@ -1,3 +1,4 @@
+use crate::collectors::dev_markers::DEV_MARKERS;
 use crate::models::Process;
 use anyhow::Result;
 use std::ffi::OsString;
@@ -49,10 +50,7 @@ pub fn collect_split(extra_dev_markers: &[String]) -> Result<(Vec<Process>, Vec<
 }
 
 /// CLI `ps` / `ps -d`.
-pub fn collect_dev_processes(
-    dev_only: bool,
-    extra_dev_markers: &[String],
-) -> Result<Vec<Process>> {
+pub fn collect_dev_processes(dev_only: bool, extra_dev_markers: &[String]) -> Result<Vec<Process>> {
     let (mut dev, regular) = collect_split(extra_dev_markers)?;
     if !dev_only {
         dev.extend(regular);
@@ -72,78 +70,6 @@ fn format_cmdline(cmd_parts: &[OsString]) -> String {
 }
 
 fn is_dev_process(name: &str, cmdline: &str, extra_markers: &[String]) -> bool {
-    const DEV_MARKERS: &[&str] = &[
-        // JS
-        "node",
-        "npm",
-        "pnpm",
-        "yarn",
-        "bun",
-        "deno",
-        "vite",
-        "next",
-        "nuxt",
-        "nest",
-        "webpack",
-        "esbuild",
-        "turbo",
-        // Python
-        "python",
-        "uvicorn",
-        "gunicorn",
-        "django",
-        "flask",
-        "fastapi",
-        "poetry",
-        "celery",
-        "manage.py",
-        // Rust
-        "cargo",
-        "rustc",
-        "target/debug",
-        "target/release",
-        // Go
-        "go run",
-        "air",
-        // JVM
-        "java",
-        "gradle",
-        "mvn",
-        "maven",
-        "spring",
-        // .NET
-        "dotnet",
-        // Ruby / PHP
-        "ruby",
-        "rails",
-        "puma",
-        "php",
-        "composer",
-        "artisan",
-        // DB / cache
-        "postgres",
-        "redis",
-        "mongod",
-        "mysql",
-        "mariadb",
-        "elasticsearch",
-        "rabbitmq",
-        "kafka",
-        "minio",
-        "memcached",
-        // containers / k8s local
-        "docker",
-        "compose",
-        "podman",
-        "kubectl",
-        "minikube",
-        "kind",
-        // local reverse proxy
-        "nginx",
-        "caddy",
-        "traefik",
-    ];
-
     let haystack: String = format!("{} {}", name, cmdline).to_lowercase();
     if DEV_MARKERS.iter().any(|marker| haystack.contains(marker)) {
         return true;
@@ -205,5 +131,23 @@ mod tests {
     fn docker_related_names_count_as_dev() {
         assert!(is_dev_process("com.docker.backend", "docker desktop", &[]));
         assert!(is_dev_process("compose", "docker compose up", &[]));
+    }
+
+    #[test]
+    fn detects_editors_and_ides() {
+        assert!(is_dev_process("zed", "/Applications/Zed.app/Contents/MacOS/zed", &[]));
+        assert!(is_dev_process(
+            "Cursor Helper",
+            "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper",
+            &[]
+        ));
+        assert!(is_dev_process(
+            "Code Helper",
+            "Visual Studio Code Helper (Plugin)",
+            &[]
+        ));
+        assert!(is_dev_process("idea", "IntelliJ IDEA", &[]));
+        assert!(is_dev_process("nvim", "nvim src/main.rs", &[]));
+        assert!(is_dev_process("Xcode", "Xcode", &[]));
     }
 }

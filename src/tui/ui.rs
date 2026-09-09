@@ -3,6 +3,7 @@ use crate::tui::app::{App, InputMode, Tab};
 
 use crate::output::table::format_port_owner;
 use crate::output::table::truncate_text;
+use crate::tui::state::nav::visible_tabs;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -12,6 +13,13 @@ use ratatui::widgets::{Block, Paragraph, Row, Table};
 const BYTES_IN_GB: f64 = 1024.0 * 1024.0 * 1024.0;
 const BYTES_IN_MB: f64 = 1024.0 * 1024.0;
 const MAX_CMDLINE_LEN: usize = 60;
+
+fn selected_row_style() -> Style {
+    Style::new()
+        .bg(Color::Blue)
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD)
+}
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -53,87 +61,24 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
-    let ports_label = if app.nav.tab == Tab::Ports {
-        "▶ 1:Ports"
-    } else {
-        "  1:Ports"
-    };
-    let dev_processes_label = if app.nav.tab == Tab::DevProcesses {
-        "▶ 2:DEV Processes"
-    } else {
-        "  2:DEV Processes"
-    };
-
-    let regular_processes_label = if app.nav.tab == Tab::RegularProcesses {
-        "▶ 3:All Processes"
-    } else {
-        "  3:All Processes"
-    };
-
-    let docker_label = if app.nav.tab == Tab::Docker {
-        "▶ 4:Docker"
-    } else {
-        "  4:Docker"
-    };
-
-    let volumes_label = if app.nav.tab == Tab::Volumes {
-        "▶ 5:Volumes"
-    } else {
-        "  5:Volumes"
-    };
-
     let active = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let inactive = Style::new().fg(Color::DarkGray);
 
-    let line = Line::from(vec![
-        Span::styled(
-            ports_label,
-            if app.nav.tab == Tab::Ports {
-                active
-            } else {
-                inactive
-            },
-        ),
-        Span::raw("   "),
-        Span::styled(
-            dev_processes_label,
-            if app.nav.tab == Tab::DevProcesses {
-                active
-            } else {
-                inactive
-            },
-        ),
-        Span::raw("   "),
-        Span::styled(
-            regular_processes_label,
-            if app.nav.tab == Tab::RegularProcesses {
-                active
-            } else {
-                inactive
-            },
-        ),
-        Span::raw("   "),
-        Span::styled(
-            docker_label,
-            if app.nav.tab == Tab::Docker {
-                active
-            } else {
-                inactive
-            },
-        ),
-        Span::raw("   "),
-        Span::styled(
-            volumes_label,
-            if app.nav.tab == Tab::Volumes {
-                active
-            } else {
-                inactive
-            },
-        ),
-    ]);
-
-    let widget = Paragraph::new(line);
-    frame.render_widget(widget, area);
+    let mut spans = Vec::new();
+    for (i, tab) in visible_tabs(&app.config).into_iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("   "));
+        }
+        let digit = i + 1;
+        let label = if app.nav.tab == tab {
+            format!("▶ {digit}:{}", tab.title())
+        } else {
+            format!("  {digit}:{}", tab.title())
+        };
+        let style = if app.nav.tab == tab { active } else { inactive };
+        spans.push(Span::styled(label, style));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn draw_main(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -208,11 +153,7 @@ fn draw_ports_table(frame: &mut Frame, area: Rect, app: &mut App) {
     )
     .header(header)
     .block(Block::bordered().title(format!("Ports [{}/{}]", selected_row + 1, total)))
-    .row_highlight_style(
-        Style::new()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )
+    .row_highlight_style(selected_row_style())
     .highlight_symbol("▶ ");
     frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
@@ -280,11 +221,7 @@ fn draw_docker_table(frame: &mut Frame, area: Rect, app: &mut App) {
     )
     .header(header)
     .block(Block::bordered().title(format!("Docker [{}/{}]", selected_row + 1, total)))
-    .row_highlight_style(
-        Style::new()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )
+    .row_highlight_style(selected_row_style())
     .highlight_symbol("▶ ");
     frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
@@ -301,8 +238,7 @@ fn draw_processes_table(
     app.nav.ensure_visible(visible);
 
     let Some(snapshot) = &app.snapshot else {
-        let widget =
-            Paragraph::new("Loading processes...").block(Block::bordered().title(title));
+        let widget = Paragraph::new("Loading processes...").block(Block::bordered().title(title));
         frame.render_widget(widget, area);
         return;
     };
@@ -356,11 +292,7 @@ fn draw_processes_table(
     )
     .header(header)
     .block(Block::bordered().title(format!("{title} [{}/{}]", selected_row + 1, total)))
-    .row_highlight_style(
-        Style::new()
-            .bg(Color::LightBlue)
-            .add_modifier(Modifier::BOLD),
-    )
+    .row_highlight_style(selected_row_style())
     .highlight_symbol("▶ ");
     frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
@@ -433,11 +365,7 @@ fn draw_volumes_table(frame: &mut Frame, area: Rect, app: &mut App) {
     )
     .header(header)
     .block(Block::bordered().title(format!("Volumes [{}/{}]", selected_row + 1, total)))
-    .row_highlight_style(
-        Style::new()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )
+    .row_highlight_style(selected_row_style())
     .highlight_symbol("▶ ");
     frame.render_stateful_widget(widget, area, &mut app.nav.table_state);
 }
@@ -478,15 +406,18 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn footer_hints(app: &App) -> String {
+    let n = visible_tabs(&app.config).len();
+    let tab_hints = format!("1-{n}: tabs");
+
     match app.nav.tab {
-        Tab::Ports => "q: quit | r: refresh | /: search | Enter: jump | 1-5: tabs".to_string(),
+        Tab::Ports => format!("q: quit | r: refresh | /: search | Enter: jump | {tab_hints}"),
         Tab::DevProcesses | Tab::RegularProcesses => {
             let prefix = if app.marks.pids.is_empty() {
                 String::new()
             } else {
                 format!("{} selected processes | ", app.marks.pids.len())
             };
-            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | 1-5: tabs")
+            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | {tab_hints}")
         }
         Tab::Docker => {
             let prefix = if app.marks.containers.is_empty() {
@@ -495,7 +426,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected containers | ", app.marks.containers.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | 1-5: tabs"
+                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | {tab_hints}"
             )
         }
         Tab::Volumes => {
@@ -505,7 +436,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected volumes | ", app.marks.volumes.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | 1-5: tabs"
+                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | {tab_hints}"
             )
         }
     }

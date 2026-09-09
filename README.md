@@ -105,11 +105,18 @@ Five tabs:
 
 1. **Ports** — who owns the port; `Enter` / `g` jumps to process or container  
 2. **Dev Processes** — marked as "dev" (node, cargo, …); mark rows, `x` to kill (confirm)  
-3. **All Processes** — everything else on the machine; same marks / kill  
+3. **All Processes** — everything else on the machine; same marks / kill (optional; see config)  
 4. **Docker** — mark rows; stop / restart / remove  
 5. **Volumes** — size / in-use; `Enter` / `g` jumps to a linked container; `d` deletes unused volumes (confirm)
 
-Data refreshes on a timer (`refresh_secs` in config, default 3s). Press `r` to refresh now. Collection runs off the UI thread.
+The **All Processes** tab can be hidden if you don’t need it. In `config.toml`:
+
+```toml
+# default is true (tab shown); set false to hide
+show_all_processes = false
+```
+
+Tab hotkeys (`1`…`N`) renumber to the visible tabs. Data refreshes on a timer (`refresh_secs` in config, default 3s). Press `r` to refresh now. Collection runs off the UI thread.
 
 <p align="center">
   <img src="assets/light-stripe-tui-docker.png" alt="Light Stripe TUI — Docker tab" width="820" />
@@ -187,9 +194,12 @@ Or pass a file for one run:
 light-stripe --config ./config.toml tui
 ```
 
-Useful keys: `refresh_secs`, `ignored_ports`, `extra_dev_markers`, `docker_host`.
+Useful keys: `refresh_secs`, `ignored_ports`, `extra_dev_markers`, `docker_host`, `show_all_processes`.
 
 ```toml
+# Hide the All Processes tab (default: true = shown)
+show_all_processes = false
+
 docker_host = "unix:///Users/you/.docker/run/docker.sock"
 ```
 

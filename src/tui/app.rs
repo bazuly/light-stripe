@@ -58,10 +58,6 @@ impl App {
         self.clear_status();
     }
 
-    pub fn current_tab(&self) -> Tab {
-        self.nav.tab
-    }
-
     pub fn apply_snapshot(&mut self, snapshot: Snapshot, warning: Option<String>) {
         self.snapshot = Some(snapshot);
         self.last_error = None;

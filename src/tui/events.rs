@@ -1,4 +1,7 @@
-use crate::tui::app::{App, InputMode, Tab};
+use crate::tui::{
+    app::{App, InputMode, Tab},
+    state::nav::{next_tab, tab_at_digit},
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
@@ -58,21 +61,15 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('N') => app.apply_search(-1),
         KeyCode::Char('r') | KeyCode::Char('R') => app.needs_refresh = true,
 
-        KeyCode::Char('1') => app.set_tab(Tab::Ports),
-        KeyCode::Char('2') => app.set_tab(Tab::DevProcesses),
-        KeyCode::Char('3') => app.set_tab(Tab::RegularProcesses),
-        KeyCode::Char('4') => app.set_tab(Tab::Docker),
-        KeyCode::Char('5') => app.set_tab(Tab::Volumes),
+        KeyCode::Char(c @ '1'..='9') => {
+            if let Some(tab) = tab_at_digit(&app.config, c as u8 - b'0') {
+                app.set_tab(tab);
+            }
+        }
 
         KeyCode::Tab => {
-            let next_tab = match app.nav.tab {
-                Tab::Ports => Tab::DevProcesses,
-                Tab::DevProcesses => Tab::RegularProcesses,
-                Tab::RegularProcesses => Tab::Docker,
-                Tab::Docker => Tab::Volumes,
-                Tab::Volumes => Tab::Ports,
-            };
-            app.set_tab(next_tab);
+            let next = next_tab(&app.config, app.nav.tab);
+            app.set_tab(next);
         }
 
         KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
