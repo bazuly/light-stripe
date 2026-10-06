@@ -408,16 +408,25 @@ fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 fn footer_hints(app: &App) -> String {
     let n = visible_tabs(&app.config).len();
     let tab_hints = format!("1-{n}: tabs");
+    let search_hints = if app.search.query.is_empty() {
+        String::new()
+    } else {
+        " | n/N: next/prev".to_string()
+    };
 
     match app.nav.tab {
-        Tab::Ports => format!("q: quit | r: refresh | /: search | Enter: jump | {tab_hints}"),
+        Tab::Ports => {
+            format!("q: quit | r: refresh | /: search{search_hints} | Enter: jump | {tab_hints}")
+        }
         Tab::DevProcesses | Tab::RegularProcesses => {
             let prefix = if app.marks.pids.is_empty() {
                 String::new()
             } else {
                 format!("{} selected processes | ", app.marks.pids.len())
             };
-            format!("{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search | {tab_hints}")
+            format!(
+                "{prefix}Space: mark | a/A: all | x: kill | q: quit | /: search{search_hints} | {tab_hints}"
+            )
         }
         Tab::Docker => {
             let prefix = if app.marks.containers.is_empty() {
@@ -426,7 +435,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected containers | ", app.marks.containers.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | {tab_hints}"
+                "{prefix}Space: mark | a/A: all | s: stop | S: restart | d: remove | q: quit | /: search{search_hints} | {tab_hints}"
             )
         }
         Tab::Volumes => {
@@ -436,7 +445,7 @@ fn footer_hints(app: &App) -> String {
                 format!("{} selected volumes | ", app.marks.volumes.len())
             };
             format!(
-                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit | {tab_hints}"
+                "{prefix}Space: mark | a/A: all | d: delete | Enter: jump | q: quit| /: search{search_hints} | | {tab_hints}"
             )
         }
     }
