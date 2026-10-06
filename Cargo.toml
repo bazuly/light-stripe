@@ -1,7 +1,15 @@
 [package]
 name = "light-stripe"
-version = "0.1.0"
-edition = "2024"
+version = "0.1.1"
+edition = "2026"
+description = "Local-dev TUI/CLI monitor for ports, processes, and Docker"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/bazuly/light-stripe"
+homepage = "https://github.com/bazuly/light-stripe"
+keywords = ["tui", "docker", "ports", "processes", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".idea/", "assets/*.png"]
 
 [dependencies]
 anyhow = "1.0.102"
